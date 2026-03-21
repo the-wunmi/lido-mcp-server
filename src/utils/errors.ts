@@ -13,18 +13,24 @@ export function handleToolError(error: unknown) {
     if (msg.includes("insufficient funds")) {
       return errorResult("Insufficient ETH balance to cover this transaction plus gas fees.");
     }
-    if (msg.includes("execution reverted")) {
-      const reason = extractRevertReason(msg);
-      return errorResult(`Transaction would revert: ${reason}`);
+    if (msg.includes("Too little received") || msg.includes("amountOutMinimum")) {
+      return errorResult("Swap slippage protection triggered — the price moved unfavorably. Try again or increase slippage_percent.");
     }
-    if (msg.includes("nonce")) {
-      return errorResult("Nonce conflict — another transaction may be pending. Try again shortly.");
+    if (msg.includes("STF") || msg.includes("TransferHelper")) {
+      return errorResult("Swap failed — insufficient pool liquidity or token transfer error. Try a smaller amount.");
     }
     if (msg.includes("STAKE_LIMIT")) {
       return errorResult("Staking limit reached. The protocol limits daily stake volume. Try a smaller amount or wait.");
     }
     if (msg.includes("PAUSED") || msg.includes("paused")) {
       return errorResult("The Lido protocol is currently paused. Staking and withdrawals are temporarily unavailable.");
+    }
+    if (msg.includes("execution reverted")) {
+      const reason = extractRevertReason(msg);
+      return errorResult(`Transaction would revert: ${reason}`);
+    }
+    if (msg.includes("nonce")) {
+      return errorResult("Nonce conflict — another transaction may be pending. Try again shortly.");
     }
 
     return errorResult(sanitizeErrorMessage(msg));

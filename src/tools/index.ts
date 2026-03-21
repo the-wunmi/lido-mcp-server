@@ -50,6 +50,12 @@ import {
   handleGetAragonVote,
   handleVoteOnProposal,
 } from "./aragon-voting.js";
+import {
+  getSwapQuoteToolDef,
+  swapEthForLdoToolDef,
+  handleGetSwapQuote,
+  handleSwapEthForLdo,
+} from "./swap.js";
 
 // --- L2 tool imports (wstETH balance, transfer, info) ---
 import {
@@ -88,6 +94,7 @@ const l1ReadToolDefs = [
   stethRateToolDef,
   gasToolDef,
   getAragonVoteToolDef,
+  getSwapQuoteToolDef,
 ];
 
 // Write L1 tools (excluded in read-only mode)
@@ -101,6 +108,7 @@ const l1WriteToolDefs = [
   lockStethGovernanceToolDef,
   unlockStethGovernanceToolDef,
   voteOnProposalToolDef,
+  swapEthForLdoToolDef,
 ];
 
 const l1ReadHandlers: Record<string, ToolHandler> = {
@@ -117,6 +125,7 @@ const l1ReadHandlers: Record<string, ToolHandler> = {
   lido_check_steth_rate: handleCheckStethRate,
   lido_check_gas_conditions: handleCheckGasConditions,
   lido_get_aragon_vote: handleGetAragonVote,
+  lido_get_swap_quote: handleGetSwapQuote,
 };
 
 const l1WriteHandlers: Record<string, ToolHandler> = {
@@ -129,6 +138,7 @@ const l1WriteHandlers: Record<string, ToolHandler> = {
   lido_lock_steth_governance: handleLockStethGovernance,
   lido_unlock_steth_governance: handleUnlockStethGovernance,
   lido_vote_on_proposal: handleVoteOnProposal,
+  lido_swap_eth_for_ldo: handleSwapEthForLdo,
 };
 
 // ============================================================

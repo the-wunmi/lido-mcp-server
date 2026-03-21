@@ -104,6 +104,21 @@ LDO token holders govern the Lido DAO through Aragon voting. Proposals cover pro
 
 **Important**: Your voting power is determined by your LDO balance at the snapshot block when the vote was created, not your current balance.
 
+#### Acquiring LDO for Voting
+
+If the wallet has no LDO, you can swap ETH for LDO via Uniswap V3 (mainnet only):
+
+- **`lido_get_swap_quote`** — Get a price quote for an ETH→LDO swap. Shows expected LDO output, effective price, gas estimate, and your balances. Read-only.
+- **`lido_swap_eth_for_ldo`** — Execute the swap. Includes slippage protection (default 0.5%, max 5%). The swap reverts on-chain if the output falls below the slippage-adjusted minimum. Supports dry_run.
+
+**Important**: Buying LDO only gives you voting power on **future** votes. For any existing vote, your voting power is locked to your LDO balance at that vote's snapshot block.
+
+#### Safe Swap Pattern
+1. **Get quote** — `lido_get_swap_quote` to see the expected output and price
+2. **Dry run** — `lido_swap_eth_for_ldo` with `dry_run: true` to verify the swap would succeed and see gas cost
+3. **Execute** — `lido_swap_eth_for_ldo` with `dry_run: false` after user confirmation
+4. **Verify** — `lido_get_balances` or `lido_get_aragon_vote` to confirm LDO balance
+
 #### Safe Voting Pattern
 1. **List votes** — `lido_get_aragon_vote` to see recent/open votes
 2. **Review details** — `lido_get_aragon_vote` with `vote_id` to understand the proposal
@@ -168,6 +183,7 @@ These operations are only available when the server is connected to Ethereum mai
 - Wrapping/unwrapping stETH ↔ wstETH
 - Requesting withdrawals back to ETH
 - Governance actions (Aragon voting, veto signalling)
+- Swapping ETH for LDO (uses Uniswap V3, mainnet only)
 
 If a user wants to stake or withdraw, they need to bridge wstETH back to L1 first or use a separate L1-configured server instance.
 
@@ -196,6 +212,7 @@ If a user wants to stake or withdraw, they need to bridge wstETH back to L1 firs
 | Convert between tokens | `lido_convert_amounts` (read-only rate check) |
 | Governance review | `lido_get_governance_state` |
 | List DAO votes | `lido_get_aragon_vote` |
+| Get LDO for voting | `lido_get_swap_quote` → `lido_swap_eth_for_ldo(dry_run)` → `lido_swap_eth_for_ldo` |
 | Vote on proposal | `lido_get_aragon_vote(vote_id)` → `lido_vote_on_proposal(dry_run)` → `lido_vote_on_proposal` |
 | Signal governance veto | `lido_get_governance_state` → `lido_lock_steth_governance(dry_run)` → `lido_lock_steth_governance` |
 | Withdraw governance lock | `lido_unlock_steth_governance(dry_run)` → `lido_unlock_steth_governance` |
