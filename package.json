@@ -1,0 +1,25 @@
+{
+  "name": "lido-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Lido protocol — stake ETH from any AI agent",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --outDir dist --clean",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsup src/index.ts --format esm --dts --outDir dist --watch"
+  },
+  "dependencies": {
+    "@lidofinance/lido-ethereum-sdk": "^4.7.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "dotenv": "^16.4.7",
+    "viem": "^2.21.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.0"
+  }
+}
