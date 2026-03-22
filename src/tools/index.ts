@@ -168,7 +168,10 @@ import {
   handleL2TransferSteth,
 } from "./l2-steth.js";
 
+import { chainInfoToolDef, handleGetChainInfo } from "./chain-info.js";
+
 const l1ReadToolDefs = [
+  chainInfoToolDef,
   balancesToolDef,
   aprToolDef,
   rewardsToolDef,
@@ -240,6 +243,7 @@ const l1WriteToolDefs = [
 ];
 
 const l1ReadHandlers: Record<string, ToolHandler> = {
+  lido_get_chain_info: handleGetChainInfo,
   lido_get_balances: handleGetBalances,
   lido_get_staking_apr: handleGetStakingApr,
   lido_get_rewards: handleGetRewards,
@@ -311,6 +315,7 @@ const l1WriteHandlers: Record<string, ToolHandler> = {
 };
 
 const l2ReadToolDefs = [
+  chainInfoToolDef,
   l2BalanceToolDef,
   l2InfoToolDef,
   ...(appConfig.isOptimism ? [l2StethBalanceToolDef] : []),
@@ -322,6 +327,7 @@ const l2WriteToolDefs = [
 ];
 
 const l2ReadHandlers: Record<string, ToolHandler> = {
+  lido_get_chain_info: handleGetChainInfo,
   lido_l2_get_wsteth_balance: handleL2GetBalance,
   lido_l2_get_wsteth_info: handleL2GetInfo,
   ...(appConfig.isOptimism ? { lido_l2_get_steth_balance: handleL2GetStethBalance } : {}),
