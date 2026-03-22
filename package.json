@@ -8,7 +8,10 @@
     "build": "tsup src/index.ts --format esm --dts --outDir dist --clean",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
-    "dev": "tsup src/index.ts --format esm --dts --outDir dist --watch"
+    "dev": "tsup src/index.ts --format esm --dts --outDir dist --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@lidofinance/lido-ethereum-sdk": "^4.7.0",
@@ -19,7 +22,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
   }
 }

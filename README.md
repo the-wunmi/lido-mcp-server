@@ -26,21 +26,40 @@ This MCP server solves that by giving agents a structured, safe interface to the
 | | `lido_convert_amounts` | stETH ↔ wstETH rate conversion |
 | | `lido_get_withdrawal_requests` | All withdrawal NFTs and their status |
 | | `lido_get_claimable_eth` | Total ETH available to claim |
-| | `lido_get_governance_state` | Dual governance state, config, veto signalling, warning status |
 | **Intelligence** | `lido_analyze_position` | Position analysis with bounds checking and recommendations |
 | | `lido_estimate_withdrawal_time` | Predict withdrawal finalization time from queue depth and mode |
 | | `lido_check_steth_rate` | Share rate, pool composition, DEX discount detection |
 | | `lido_check_gas_conditions` | Gas price tiers, operation costs, break-even analysis |
+| | `lido_get_swap_quote` | Price quote for ETH → LDO swap via Uniswap V3 |
 | **Stake** | `lido_stake_eth` | Stake ETH → stETH (with dry_run) |
 | **Wrap** | `lido_wrap_steth_to_wsteth` | Wrap stETH → wstETH (with dry_run) |
 | | `lido_wrap_eth_to_wsteth` | Stake + wrap in one tx (with dry_run) |
 | | `lido_unwrap_wsteth_to_steth` | Unwrap wstETH → stETH (with dry_run) |
 | **Withdraw** | `lido_request_withdrawal` | Request withdrawal with auto-splitting (with dry_run) |
 | | `lido_claim_withdrawal` | Claim finalized withdrawals (with dry_run) |
-| **Governance** | `lido_get_aragon_vote` | Query Aragon DAO votes — recent list or specific vote details |
-| | `lido_vote_on_proposal` | Cast vote on DAO proposal (with dry_run) |
+| **Swap** | `lido_swap_eth_for_ldo` | Swap ETH for LDO tokens via Uniswap V3 (with dry_run) |
+| **Governance** | | |
+| *Dual Governance* | `lido_get_governance_state` | Dual governance state, config, veto signalling, warning status |
 | | `lido_lock_steth_governance` | Lock stETH in veto signalling escrow (with dry_run) |
 | | `lido_unlock_steth_governance` | Unlock stETH from governance escrow (with dry_run) |
+| | `lido_get_voting_power` | Cross-system governance power: LDO, stETH, escrow balances |
+| | `lido_estimate_veto_impact` | Estimate impact of locking stETH in veto escrow |
+| | `lido_get_veto_thresholds` | Veto threshold config: first/second seal, current level |
+| | `lido_get_governance_timeline` | Unified timeline across all governance systems |
+| | `lido_get_governance_position_impact` | Analyze how governance state affects a staking position |
+| *Aragon DAO* | `lido_get_aragon_vote` | Query Aragon DAO votes — recent list or specific vote details |
+| | `lido_vote_on_proposal` | Cast vote on DAO proposal (with dry_run) |
+| | `lido_analyze_aragon_vote` | Deep analysis: quorum, phase, pass/fail projection, top voters |
+| | `lido_get_aragon_vote_script` | Decode EVM script into human-readable actions |
+| | `lido_get_aragon_vote_timeline` | Vote timeline: phases, time remaining, projections |
+| *Snapshot* | `lido_get_snapshot_proposals` | List governance proposals from Lido Snapshot space |
+| | `lido_get_snapshot_proposal` | Full details of a specific Snapshot proposal |
+| | `lido_vote_on_snapshot` | Cast vote on Snapshot proposal via EIP-712 (with dry_run) |
+| *Easy Track* | `lido_get_easytrack_motions` | List Easy Track motions with optional status filter |
+| | `lido_get_easytrack_motion` | Detailed view of a specific Easy Track motion |
+| | `lido_get_easytrack_config` | Easy Track system config: thresholds, duration, factories |
+| | `lido_get_easytrack_factories` | List registered EVM script factories with descriptions |
+| | `lido_object_easytrack_motion` | Object to an active Easy Track motion (with dry_run) |
 | **L2 wstETH** | `lido_l2_get_wsteth_balance` | wstETH + ETH balances on Base, Optimism, or Arbitrum |
 | | `lido_l2_transfer_wsteth` | Transfer wstETH on L2 (with dry_run) |
 | | `lido_l2_get_wsteth_info` | L2 wstETH contract info + total bridged supply |
@@ -244,8 +263,12 @@ src/
 │   ├── convert.ts        Token amount conversion
 │   ├── gas.ts            Gas price analysis + break-even calculator
 │   ├── governance.ts     Dual governance state + config + warnings
-│   ├── aragon-voting.ts  Query & vote on Aragon DAO proposals
+│   ├── aragon-voting.ts  Query, vote, analyze Aragon DAO proposals
 │   ├── governance-actions.ts Lock/unlock stETH in veto signalling escrow
+│   ├── governance-analysis.ts Veto impact, thresholds, timeline, position impact
+│   ├── snapshot.ts        Snapshot proposal queries + voting
+│   ├── easytrack.ts       Easy Track motions, config, factories, objections
+│   ├── swap.ts            ETH → LDO swap quotes + execution via Uniswap V3
 │   ├── position.ts       Position analysis with bounds checking
 │   ├── protocol-status.ts Stake limits, queue status
 │   ├── steth-rate.ts     Share rate + pool composition monitor
