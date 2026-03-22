@@ -127,8 +127,8 @@ Add to your MCP configuration:
 {
   "mcpServers": {
     "lido": {
-      "command": "node",
-      "args": ["/path/to/lido-mcp-server/dist/index.js"],
+      "command": "bash",
+      "args": ["/path/to/lido-mcp-server/start.sh"],
       "env": {
         "LIDO_RPC_URL": "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY",
         "LIDO_PRIVATE_KEY": "0xYOUR_PRIVATE_KEY",
