@@ -4,65 +4,9 @@ import { sdk, publicClient, walletClient, getAccountAddress } from "../sdk-facto
 import { textResult, errorResult, ethAmountSchema } from "../utils/format.js";
 import { handleToolError, sanitizeErrorMessage } from "../utils/errors.js";
 import { validateAmountCap } from "../utils/security.js";
+import { escrowAbi, stethApproveAbi } from "../utils/escrow-abi.js";
 
 const GOVERNANCE_STATE_RAGE_QUIT = 5;
-
-const escrowWriteAbi = [
-  {
-    name: "lockStETH",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "amount", type: "uint256" }],
-    outputs: [{ name: "lockedStETHShares", type: "uint256" }],
-  },
-  {
-    name: "unlockStETH",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [{ name: "unlockedStETHShares", type: "uint256" }],
-  },
-  {
-    name: "getVetoerDetails",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "vetoer", type: "address" }],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { name: "unstETHIdsCount", type: "uint256" },
-          { name: "stETHLockedShares", type: "uint128" },
-          { name: "unstETHLockedShares", type: "uint128" },
-          { name: "lastAssetsLockTimestamp", type: "uint40" },
-        ],
-      },
-    ],
-  },
-] as const;
-
-const stethApproveAbi = [
-  {
-    name: "approve",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "allowance",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
 
 export const lockStethGovernanceToolDef = {
   name: "lido_lock_steth_governance",
@@ -205,14 +149,14 @@ export async function handleLockStethGovernance(args: Record<string, unknown>) {
         try {
           await publicClient.simulateContract({
             address: escrowAddress,
-            abi: escrowWriteAbi,
+            abi: escrowAbi,
             functionName: "lockStETH",
             args: [amountWei],
             account: address,
           });
           gasEstimate = await publicClient.estimateContractGas({
             address: escrowAddress,
-            abi: escrowWriteAbi,
+            abi: escrowAbi,
             functionName: "lockStETH",
             args: [amountWei],
             account: address,
@@ -232,7 +176,7 @@ export async function handleLockStethGovernance(args: Record<string, unknown>) {
       try {
         const details = await publicClient.readContract({
           address: escrowAddress,
-          abi: escrowWriteAbi,
+          abi: escrowAbi,
           functionName: "getVetoerDetails",
           args: [address],
         });
@@ -286,7 +230,7 @@ export async function handleLockStethGovernance(args: Record<string, unknown>) {
 
     const lockHash = await walletClient.writeContract({
       address: escrowAddress,
-      abi: escrowWriteAbi,
+      abi: escrowAbi,
       functionName: "lockStETH",
       args: [amountWei],
     });
@@ -336,7 +280,7 @@ export async function handleUnlockStethGovernance(args: Record<string, unknown>)
     try {
       const details = await publicClient.readContract({
         address: escrowAddress,
-        abi: escrowWriteAbi,
+        abi: escrowAbi,
         functionName: "getVetoerDetails",
         args: [address],
       });
@@ -369,13 +313,13 @@ export async function handleUnlockStethGovernance(args: Record<string, unknown>)
       try {
         await publicClient.simulateContract({
           address: escrowAddress,
-          abi: escrowWriteAbi,
+          abi: escrowAbi,
           functionName: "unlockStETH",
           account: address,
         });
         gasEstimate = await publicClient.estimateContractGas({
           address: escrowAddress,
-          abi: escrowWriteAbi,
+          abi: escrowAbi,
           functionName: "unlockStETH",
           account: address,
         });
@@ -413,7 +357,7 @@ export async function handleUnlockStethGovernance(args: Record<string, unknown>)
 
     const unlockHash = await walletClient.writeContract({
       address: escrowAddress,
-      abi: escrowWriteAbi,
+      abi: escrowAbi,
       functionName: "unlockStETH",
     });
 

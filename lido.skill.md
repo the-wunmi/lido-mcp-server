@@ -1,6 +1,6 @@
 # Lido Staking — Agent Mental Model
 
-You have access to a Lido MCP server that lets you stake ETH, wrap/unwrap tokens, manage withdrawals, monitor positions, and review governance — all directly from this conversation. Here's what you need to know to use it well.
+You have access to a Lido MCP server that lets you stake ETH, wrap/unwrap tokens, manage withdrawals, monitor positions, and participate in governance across all four Lido governance systems — all directly from this conversation. Here's what you need to know to use it well.
 
 ## Core Concepts
 
@@ -29,6 +29,7 @@ Use these to invoke guided multi-step workflows instead of manually calling tool
 - **`manage-position`** — Full position analysis: balances, APR, rewards, withdrawals, governance state, and recommendations. Supports setting monitoring bounds.
 - **`withdraw-steth`** — Guided withdrawal: shows balances → checks queue status → handles existing claims → dry-runs → executes.
 - **`review-governance`** — Governance analysis: state, veto signalling, escrow details, and plain-language explanation of what it means for your position.
+- **`participate-governance`** — Comprehensive governance participation: checks voting power across all systems, reviews active proposals/motions (Aragon, Snapshot, Easy Track), and guides through voting or objecting.
 
 ## Available Resources
 
@@ -37,6 +38,7 @@ Read these for live structured data (JSON):
 - **`lido://position/{address}`** — Staking position snapshot: ETH/stETH/wstETH balances, APR, pending/claimable withdrawals.
 - **`lido://protocol/status`** — Protocol status: staking limits, withdrawal queue mode, current APR.
 - **`lido://governance/state`** — Governance state: dual governance status, veto signalling, escrow details.
+- **`lido://governance/votes`** — Active governance items across all systems: Snapshot proposals, Easy Track motions.
 
 ## Safe Staking Pattern
 
@@ -84,27 +86,68 @@ The tool explains the calculation method (buffer, bunker, validator exits, etc.)
 - **stETH → wstETH**: Use `lido_wrap_steth_to_wsteth` — requires stETH approval for the wstETH contract.
 - **wstETH → stETH**: Use `lido_unwrap_wsteth_to_steth`.
 
-## Dual Governance
+## Governance — Four Systems
 
-Lido uses a dual governance system to protect stakers:
-- `lido_get_governance_state` shows the current governance state, configuration, veto signalling progress, and warning status.
-- In normal operation, the state is "Normal". If stakers disagree with a governance proposal, they can lock stETH in an escrow to signal a veto.
-- Common path: Normal → VetoSignalling → VetoSignallingDeactivation → VetoCooldown → Normal. RageQuit can be entered directly from VetoSignalling or VetoSignallingDeactivation if support exceeds the second seal threshold.
-- **Warning status** indicates whether governance is "Normal", "Warning" (approaching veto threshold), or "Blocked" (proposals cannot execute).
-- The governance config shows the rage-quit thresholds, lock durations, and cooldown periods.
+Lido governance spans four systems. Use `lido_get_governance_timeline` for a unified view of all active items, or `lido_get_voting_power` to see your governance power across all systems.
 
-### Governance Actions
-
-#### Aragon DAO Voting (LDO holders)
+### 1. Aragon DAO Voting (LDO holders)
 
 LDO token holders govern the Lido DAO through Aragon voting. Proposals cover protocol upgrades, fee changes, treasury allocations, and more.
 
 - **`lido_get_aragon_vote`** — Query DAO votes. Pass a `vote_id` for details on a specific vote, or omit to list recent votes. Shows yea/nay tallies, quorum progress, your voting status, and whether you can vote.
 - **`lido_vote_on_proposal`** — Cast your vote on an open proposal. Requires LDO tokens at the vote's snapshot block. Supports dry_run.
+- **`lido_analyze_aragon_vote`** — Deep analysis: quorum progress, time remaining, phase (main/objection/ended), pass/fail projection, top voter breakdown.
+- **`lido_get_aragon_vote_script`** — Decode the EVM script from a vote into human-readable actions (target contracts, function calls).
+- **`lido_get_aragon_vote_timeline`** — Timeline visualization: start, main phase end, objection phase end, progress bar.
 
 **Important**: Your voting power is determined by your LDO balance at the snapshot block when the vote was created, not your current balance.
 
-#### Acquiring LDO for Voting
+#### Aragon Vote Phases
+Aragon votes have two phases:
+1. **Main phase** — Both Yea and Nay votes can be cast.
+2. **Objection phase** — Only Nay votes can be cast (prevents last-minute Yea manipulation).
+
+### 2. Snapshot (Off-chain Voting)
+
+Snapshot proposals are off-chain governance votes that don't require gas. They're used for signaling, temperature checks, and decisions that don't need on-chain execution.
+
+- **`lido_get_snapshot_proposals`** — List proposals from the `lido-snapshot.eth` space. Filter by state (active/closed/pending/all), count, search text.
+- **`lido_get_snapshot_proposal`** — Full details of one proposal including body, choices, scores, strategies, your vote and voting power.
+- **`lido_vote_on_snapshot`** — Cast vote via EIP-712 signed message (no gas required). Supports dry_run validation.
+
+**Key difference from Aragon**: Snapshot votes are off-chain. No gas is needed, but votes don't execute on-chain actions directly.
+
+### 3. Easy Track (Lightweight Governance)
+
+Easy Track handles routine operations (payments, reward programs, node operator management) with a streamlined process. Motions pass automatically unless enough LDO holders object within the objection window.
+
+- **`lido_get_easytrack_motions`** — List motions with status filter (active/all). Shows factory label, creator, objection count/%, time remaining.
+- **`lido_get_easytrack_motion`** — Detailed view of one motion including can-object status and objection progress vs threshold.
+- **`lido_get_easytrack_config`** — System config: objection threshold, motion duration, motions count limit, registered factories.
+- **`lido_get_easytrack_factories`** — All registered EVM script factories with human-readable descriptions.
+- **`lido_object_easytrack_motion`** — Object to an active motion. Requires LDO. Supports dry_run.
+
+**How Easy Track works**: A motion is created by an allowed address using a registered factory. If objections remain below the threshold (typically 0.5% of LDO supply) during the motion duration (typically 72h), it auto-enacts. If objections exceed the threshold, the motion is rejected.
+
+### 4. Dual Governance (stETH Holders)
+
+Dual governance protects stETH holders from harmful DAO proposals via veto signalling:
+
+- **`lido_get_governance_state`** — Current state, veto progress, escrow details, configuration.
+- **`lido_lock_steth_governance`** — Lock stETH in escrow to signal a veto. Supports dry_run.
+- **`lido_unlock_steth_governance`** — Unlock stETH from escrow. Note: minimum lock duration applies.
+- **`lido_estimate_veto_impact`** — Given a stETH amount, compute projected veto %, whether it triggers first/second seal, estimated timelock.
+- **`lido_get_veto_thresholds`** — Threshold config with context: amounts needed for each seal, current escrow level.
+
+**State machine**: Normal → VetoSignalling → VetoSignallingDeactivation → VetoCooldown → Normal. RageQuit can be entered from VetoSignalling if support exceeds the second seal threshold.
+
+### Cross-System Tools
+
+- **`lido_get_voting_power`** — Your governance power across all systems: LDO balance (Aragon + Easy Track), stETH/wstETH balance (Dual Governance veto power), stETH locked in escrow.
+- **`lido_get_governance_timeline`** — Unified timeline: DG state, open Aragon votes, active Easy Track motions, objection windows.
+- **`lido_get_governance_position_impact`** — How governance state affects a staking position: risk level, withdrawal queue impact, actionable recommendations.
+
+### Acquiring LDO for Voting
 
 If the wallet has no LDO, you can swap ETH for LDO via Uniswap V3 (mainnet only):
 
@@ -113,32 +156,33 @@ If the wallet has no LDO, you can swap ETH for LDO via Uniswap V3 (mainnet only)
 
 **Important**: Buying LDO only gives you voting power on **future** votes. For any existing vote, your voting power is locked to your LDO balance at that vote's snapshot block.
 
-#### Safe Swap Pattern
-1. **Get quote** — `lido_get_swap_quote` to see the expected output and price
-2. **Dry run** — `lido_swap_eth_for_ldo` with `dry_run: true` to verify the swap would succeed and see gas cost
-3. **Execute** — `lido_swap_eth_for_ldo` with `dry_run: false` after user confirmation
-4. **Verify** — `lido_get_balances` or `lido_get_aragon_vote` to confirm LDO balance
+### Safe Governance Participation Patterns
 
-#### Safe Voting Pattern
-1. **List votes** — `lido_get_aragon_vote` to see recent/open votes
-2. **Review details** — `lido_get_aragon_vote` with `vote_id` to understand the proposal
-3. **Dry run** — `lido_vote_on_proposal` with `dry_run: true` to confirm eligibility and preview gas
-4. **Execute** — `lido_vote_on_proposal` with `dry_run: false` after user confirmation
-5. **Verify** — `lido_get_aragon_vote` with `vote_id` to see updated tally
+#### Aragon Voting
+1. `lido_get_aragon_vote` → list open votes
+2. `lido_analyze_aragon_vote` → deep analysis of a specific vote
+3. `lido_get_aragon_vote_script` → understand what the vote will execute
+4. `lido_vote_on_proposal(dry_run)` → preview gas and confirm eligibility
+5. `lido_vote_on_proposal` → execute after user confirmation
 
-#### Dual Governance Veto (stETH holders)
+#### Snapshot Voting
+1. `lido_get_snapshot_proposals(state='active')` → find active proposals
+2. `lido_get_snapshot_proposal` → full details and your voting power
+3. `lido_vote_on_snapshot(dry_run)` → validate eligibility
+4. `lido_vote_on_snapshot` → submit (no gas needed)
 
-stETH holders can participate in governance by locking/unlocking stETH in the veto signalling escrow:
+#### Easy Track Objection
+1. `lido_get_easytrack_motions(status='active')` → find active motions
+2. `lido_get_easytrack_motion` → detailed view + can-object check
+3. `lido_object_easytrack_motion(dry_run)` → preview gas
+4. `lido_object_easytrack_motion` → execute after user confirmation
 
-- **`lido_lock_steth_governance`** — Lock stETH in the escrow to signal a veto against DAO proposals. This is the core governance action. When enough stETH is locked (exceeding the first seal threshold), governance enters VetoSignalling and proposals are blocked.
-- **`lido_unlock_steth_governance`** — Unlock your stETH from the escrow and return it to your wallet. Note: there is a minimum lock duration before unlocking is allowed.
-
-#### Safe Veto Participation Pattern
-1. **Review state** — `lido_get_governance_state` to understand current governance status
-2. **Check position** — `lido_get_balances` to see available stETH
-3. **Dry run** — `lido_lock_steth_governance` with `dry_run: true` to preview the lock
-4. **Execute** — `lido_lock_steth_governance` with `dry_run: false` after user confirmation
-5. **Verify** — `lido_get_governance_state` again to see updated veto support
+#### Veto Signalling
+1. `lido_get_governance_state` → understand current state
+2. `lido_estimate_veto_impact` → preview impact of locking stETH
+3. `lido_get_veto_thresholds` → see threshold distances
+4. `lido_lock_steth_governance(dry_run)` → preview the lock
+5. `lido_lock_steth_governance` → execute after user confirmation
 
 ## stETH Rate & Gas Intelligence
 
@@ -182,7 +226,7 @@ These operations are only available when the server is connected to Ethereum mai
 - Staking ETH to get stETH/wstETH
 - Wrapping/unwrapping stETH ↔ wstETH
 - Requesting withdrawals back to ETH
-- Governance actions (Aragon voting, veto signalling)
+- Governance actions (Aragon voting, Snapshot voting, Easy Track, veto signalling)
 - Swapping ETH for LDO (uses Uniswap V3, mainnet only)
 
 If a user wants to stake or withdraw, they need to bridge wstETH back to L1 first or use a separate L1-configured server instance.
@@ -195,6 +239,8 @@ If a user wants to stake or withdraw, they need to bridge wstETH back to L1 firs
 4. **Staking when paused** — Check `lido_get_protocol_status` first. If staking is paused, transactions will revert.
 5. **Ignoring gas costs** — Always dry_run first. L1 gas can be significant, especially for wrap/withdrawal operations.
 6. **Skipping position analysis** — Before any action, use `lido_analyze_position` to understand the full position context.
+7. **Confusing Snapshot and Aragon votes** — Snapshot is off-chain (no gas), Aragon is on-chain (requires gas). Use the appropriate tools for each.
+8. **Ignoring Easy Track objection windows** — Motions auto-enact if no one objects. Check `lido_get_easytrack_motions` regularly.
 
 ## Tool Usage Quick Reference
 
@@ -210,10 +256,19 @@ If a user wants to stake or withdraw, they need to bridge wstETH back to L1 firs
 | Check stETH value | `lido_check_steth_rate` (share rate, pool composition, DEX discount check) |
 | Check gas timing | `lido_check_gas_conditions` (gas price, operation costs, break-even analysis) |
 | Convert between tokens | `lido_convert_amounts` (read-only rate check) |
+| **Governance overview** | `lido_get_governance_timeline` (unified view of all active governance) |
+| **Check voting power** | `lido_get_voting_power` (LDO + stETH across all systems) |
+| **Governance risk** | `lido_get_governance_position_impact` (how governance affects your position) |
 | Governance review | `lido_get_governance_state` |
 | List DAO votes | `lido_get_aragon_vote` |
+| **Analyze DAO vote** | `lido_analyze_aragon_vote` → `lido_get_aragon_vote_script` → `lido_get_aragon_vote_timeline` |
 | Get LDO for voting | `lido_get_swap_quote` → `lido_swap_eth_for_ldo(dry_run)` → `lido_swap_eth_for_ldo` |
-| Vote on proposal | `lido_get_aragon_vote(vote_id)` → `lido_vote_on_proposal(dry_run)` → `lido_vote_on_proposal` |
+| Vote on Aragon proposal | `lido_get_aragon_vote(vote_id)` → `lido_vote_on_proposal(dry_run)` → `lido_vote_on_proposal` |
+| **Snapshot proposals** | `lido_get_snapshot_proposals` → `lido_get_snapshot_proposal` |
+| **Vote on Snapshot** | `lido_vote_on_snapshot(dry_run)` → `lido_vote_on_snapshot` |
+| **Easy Track motions** | `lido_get_easytrack_motions` → `lido_get_easytrack_motion` |
+| **Object to motion** | `lido_object_easytrack_motion(dry_run)` → `lido_object_easytrack_motion` |
+| **Veto impact analysis** | `lido_estimate_veto_impact` → `lido_get_veto_thresholds` |
 | Signal governance veto | `lido_get_governance_state` → `lido_lock_steth_governance(dry_run)` → `lido_lock_steth_governance` |
 | Withdraw governance lock | `lido_unlock_steth_governance(dry_run)` → `lido_unlock_steth_governance` |
 | **L2: Check wstETH** | `lido_l2_get_wsteth_balance` |

@@ -8,8 +8,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { sdk, publicClient, getAccountAddress } from "./sdk-factory.js";
 import { sanitizeErrorMessage } from "./utils/errors.js";
-import { GOVERNANCE_WARNING_THRESHOLD } from "./config.js";
+import { appConfig, GOVERNANCE_WARNING_THRESHOLD } from "./config.js";
 import { GOVERNANCE_STATE_LABELS } from "./utils/governance-labels.js";
+import { getSnapshotProposals } from "./utils/snapshot-client.js";
+import { easyTrackAbi, getEasyTrackAddress, type EasyTrackMotion } from "./utils/easytrack-abi.js";
+import { getFactoryLabel } from "./utils/easytrack-labels.js";
 
 async function getPositionData(address: Address): Promise<string> {
   const [ethBalance, stethBalance, wstethBalance, lastApr, smaApr] = await Promise.all([
@@ -128,6 +131,63 @@ async function getGovernanceData(): Promise<string> {
   return JSON.stringify(data, null, 2);
 }
 
+async function getActiveGovernanceVotes(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const items: Array<{ system: string; id: string; title: string; status: string; endsAt: string; timeRemaining: string }> = [];
+
+  // Snapshot active proposals
+  try {
+    const proposals = await getSnapshotProposals({ state: "active", first: 10 });
+    for (const p of proposals) {
+      const remaining = p.end - now;
+      const hours = Math.floor(remaining / 3600);
+      const days = Math.floor(hours / 24);
+      items.push({
+        system: "Snapshot",
+        id: p.id,
+        title: p.title,
+        status: "active",
+        endsAt: new Date(p.end * 1000).toISOString(),
+        timeRemaining: days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`,
+      });
+    }
+  } catch {
+    // Snapshot may be unavailable
+  }
+
+  // Easy Track active motions
+  try {
+    const etAddr = getEasyTrackAddress();
+    const motions = await publicClient.readContract({
+      address: etAddr,
+      abi: easyTrackAbi,
+      functionName: "getMotions",
+    }) as readonly EasyTrackMotion[];
+
+    for (const m of motions) {
+      const endTime = Number(m.startDate) + Number(m.duration);
+      if (now < endTime) {
+        const remaining = endTime - now;
+        const hours = Math.floor(remaining / 3600);
+        const days = Math.floor(hours / 24);
+        const label = getFactoryLabel(appConfig.chainId, m.evmScriptFactory);
+        items.push({
+          system: "EasyTrack",
+          id: m.id.toString(),
+          title: label,
+          status: "active",
+          endsAt: new Date(endTime * 1000).toISOString(),
+          timeRemaining: days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`,
+        });
+      }
+    }
+  } catch {
+    // Easy Track may not be available on this chain
+  }
+
+  return JSON.stringify({ active_governance_items: items, fetched_at: new Date().toISOString() }, null, 2);
+}
+
 export function registerResources(server: Server) {
   // List static resources
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
@@ -144,6 +204,13 @@ export function registerResources(server: Server) {
         name: "Lido Governance State",
         description:
           "Current dual governance state, veto signalling progress, escrow details.",
+        mimeType: "application/json",
+      },
+      {
+        uri: "lido://governance/votes",
+        name: "Active Governance Items",
+        description:
+          "Active governance items across all systems: Snapshot proposals, Easy Track motions.",
         mimeType: "application/json",
       },
     ],
@@ -189,6 +256,14 @@ export function registerResources(server: Server) {
       // Match lido://governance/state
       if (uri === "lido://governance/state") {
         const text = await getGovernanceData();
+        return {
+          contents: [{ uri, mimeType: "application/json", text }],
+        };
+      }
+
+      // Match lido://governance/votes
+      if (uri === "lido://governance/votes") {
+        const text = await getActiveGovernanceVotes();
         return {
           contents: [{ uri, mimeType: "application/json", text }],
         };

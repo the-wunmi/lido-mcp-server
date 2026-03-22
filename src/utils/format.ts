@@ -37,3 +37,19 @@ export function textResult(text: string): { content: Array<{ type: "text"; text:
 export function errorResult(message: string): { content: Array<{ type: "text"; text: string }>; isError: true } {
   return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
 }
+
+export function formatTimestamp(ts: number | bigint): string {
+  return new Date(Number(ts) * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds <= 0) return "0s";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
+  return parts.join(" ") || `${seconds}s`;
+}

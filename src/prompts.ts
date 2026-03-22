@@ -52,6 +52,20 @@ const prompts = [
       "Checks dual governance state, veto signalling, escrow details, and provides analysis.",
     arguments: [],
   },
+  {
+    name: "participate-governance",
+    description:
+      "Comprehensive governance participation workflow. " +
+      "Checks voting power, reviews active proposals/motions across all governance systems " +
+      "(Aragon, Snapshot, Easy Track, Dual Governance), and guides through voting or objecting.",
+    arguments: [
+      {
+        name: "address",
+        description: "Ethereum address to check voting power for. Defaults to configured wallet.",
+        required: false,
+      },
+    ],
+  },
 ];
 
 function getPromptMessages(name: string, args: Record<string, string> | undefined) {
@@ -182,6 +196,53 @@ function getPromptMessages(name: string, args: Record<string, string> | undefine
               "- Warning status 'Blocked' means governance actions are halted",
               "- The first seal rage-quit threshold is when veto signalling activates",
               "- The second seal threshold triggers an unstoppable rage quit",
+            ].join("\n"),
+          },
+        },
+      ];
+    }
+
+    case "participate-governance": {
+      const address = args?.address;
+      const addrInstruction = address
+        ? `Check governance power for address ${address}.`
+        : "Use the configured wallet address.";
+
+      return [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: [
+              `I want to participate in Lido governance. ${addrInstruction}`,
+              "",
+              "Please follow this governance participation workflow:",
+              "",
+              "1. **Check my voting power** — Use lido_get_voting_power to see my LDO balance (Aragon/Easy Track) and stETH balance (Dual Governance)",
+              "",
+              "2. **Show unified timeline** — Use lido_get_governance_timeline to see all active governance items:",
+              "   - Dual Governance state and any transitions",
+              "   - Open Aragon DAO votes with time remaining",
+              "   - Active Easy Track motions with objection windows",
+              "",
+              "3. **Review Snapshot proposals** — Use lido_get_snapshot_proposals with state='active' to find any active off-chain votes",
+              "",
+              "4. **For each active item, provide:**",
+              "   - Summary of what it does",
+              "   - Time remaining to act",
+              "   - Whether I can participate (voting power check)",
+              "   - My current vote status (if applicable)",
+              "",
+              "5. **Guide me through any actions I want to take:**",
+              "   - For Aragon votes: dry-run with lido_vote_on_proposal first",
+              "   - For Snapshot votes: dry-run with lido_vote_on_snapshot first",
+              "   - For Easy Track objections: dry-run with lido_object_easytrack_motion first",
+              "   - For Dual Governance veto: dry-run with lido_lock_steth_governance first",
+              "",
+              "Important:",
+              "- Always dry-run before executing any governance action",
+              "- Explain what each vote/motion does before asking for my decision",
+              "- If I have zero voting power in any system, suggest how to acquire it",
             ].join("\n"),
           },
         },

@@ -47,8 +47,14 @@ import {
 import {
   getAragonVoteToolDef,
   voteOnProposalToolDef,
+  analyzeAragonVoteToolDef,
+  getAragonVoteScriptToolDef,
+  getAragonVoteTimelineToolDef,
   handleGetAragonVote,
   handleVoteOnProposal,
+  handleAnalyzeAragonVote,
+  handleGetAragonVoteScript,
+  handleGetAragonVoteTimeline,
 } from "./aragon-voting.js";
 import {
   getSwapQuoteToolDef,
@@ -56,6 +62,37 @@ import {
   handleGetSwapQuote,
   handleSwapEthForLdo,
 } from "./swap.js";
+import {
+  getSnapshotProposalsToolDef,
+  getSnapshotProposalToolDef,
+  voteOnSnapshotToolDef,
+  handleGetSnapshotProposals,
+  handleGetSnapshotProposal,
+  handleVoteOnSnapshot,
+} from "./snapshot.js";
+import {
+  getEasyTrackMotionsToolDef,
+  getEasyTrackMotionToolDef,
+  getEasyTrackConfigToolDef,
+  getEasyTrackFactoriesToolDef,
+  objectEasyTrackMotionToolDef,
+  handleGetEasyTrackMotions,
+  handleGetEasyTrackMotion,
+  handleGetEasyTrackConfig,
+  handleGetEasyTrackFactories,
+  handleObjectEasyTrackMotion,
+} from "./easytrack.js";
+import { votingPowerToolDef, handleGetVotingPower } from "./governance.js";
+import {
+  estimateVetoImpactToolDef,
+  getVetoThresholdsToolDef,
+  getGovernanceTimelineToolDef,
+  getGovernancePositionImpactToolDef,
+  handleEstimateVetoImpact,
+  handleGetVetoThresholds,
+  handleGetGovernanceTimeline,
+  handleGetGovernancePositionImpact,
+} from "./governance-analysis.js";
 
 // --- L2 tool imports (wstETH balance, transfer, info) ---
 import {
@@ -95,6 +132,25 @@ const l1ReadToolDefs = [
   gasToolDef,
   getAragonVoteToolDef,
   getSwapQuoteToolDef,
+  // Snapshot
+  getSnapshotProposalsToolDef,
+  getSnapshotProposalToolDef,
+  // Easy Track
+  getEasyTrackMotionsToolDef,
+  getEasyTrackMotionToolDef,
+  getEasyTrackConfigToolDef,
+  getEasyTrackFactoriesToolDef,
+  // Enhanced Aragon
+  analyzeAragonVoteToolDef,
+  getAragonVoteScriptToolDef,
+  getAragonVoteTimelineToolDef,
+  // Voting Power
+  votingPowerToolDef,
+  // Governance Analysis
+  estimateVetoImpactToolDef,
+  getVetoThresholdsToolDef,
+  getGovernanceTimelineToolDef,
+  getGovernancePositionImpactToolDef,
 ];
 
 // Write L1 tools (excluded in read-only mode)
@@ -109,6 +165,10 @@ const l1WriteToolDefs = [
   unlockStethGovernanceToolDef,
   voteOnProposalToolDef,
   swapEthForLdoToolDef,
+  // Snapshot
+  voteOnSnapshotToolDef,
+  // Easy Track
+  objectEasyTrackMotionToolDef,
 ];
 
 const l1ReadHandlers: Record<string, ToolHandler> = {
@@ -126,6 +186,25 @@ const l1ReadHandlers: Record<string, ToolHandler> = {
   lido_check_gas_conditions: handleCheckGasConditions,
   lido_get_aragon_vote: handleGetAragonVote,
   lido_get_swap_quote: handleGetSwapQuote,
+  // Snapshot
+  lido_get_snapshot_proposals: handleGetSnapshotProposals,
+  lido_get_snapshot_proposal: handleGetSnapshotProposal,
+  // Easy Track
+  lido_get_easytrack_motions: handleGetEasyTrackMotions,
+  lido_get_easytrack_motion: handleGetEasyTrackMotion,
+  lido_get_easytrack_config: handleGetEasyTrackConfig,
+  lido_get_easytrack_factories: handleGetEasyTrackFactories,
+  // Enhanced Aragon
+  lido_analyze_aragon_vote: handleAnalyzeAragonVote,
+  lido_get_aragon_vote_script: handleGetAragonVoteScript,
+  lido_get_aragon_vote_timeline: handleGetAragonVoteTimeline,
+  // Voting Power
+  lido_get_voting_power: handleGetVotingPower,
+  // Governance Analysis
+  lido_estimate_veto_impact: handleEstimateVetoImpact,
+  lido_get_veto_thresholds: handleGetVetoThresholds,
+  lido_get_governance_timeline: handleGetGovernanceTimeline,
+  lido_get_governance_position_impact: handleGetGovernancePositionImpact,
 };
 
 const l1WriteHandlers: Record<string, ToolHandler> = {
@@ -139,6 +218,10 @@ const l1WriteHandlers: Record<string, ToolHandler> = {
   lido_unlock_steth_governance: handleUnlockStethGovernance,
   lido_vote_on_proposal: handleVoteOnProposal,
   lido_swap_eth_for_ldo: handleSwapEthForLdo,
+  // Snapshot
+  lido_vote_on_snapshot: handleVoteOnSnapshot,
+  // Easy Track
+  lido_object_easytrack_motion: handleObjectEasyTrackMotion,
 };
 
 // ============================================================
