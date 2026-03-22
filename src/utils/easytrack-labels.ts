@@ -54,9 +54,55 @@ const HOLESKY_FACTORY_LABELS: Record<string, string> = {
   // Holesky uses different addresses for testnet factories
 };
 
+const HOODI_FACTORY_LABELS: Record<string, string> = {
+  // Curated Node Operators
+  "0x0f121e4069e17a2Dc5bAbF39d769313a1e20f323": "Curated NO: Increase staking limit",
+  "0x397206ecdbdcb1A55A75e60Fc4D054feC72E5f63": "Curated NO: Submit exit request hashes",
+
+  // Community Staking Module
+  "0x5c0af5b9f96921d3F61503e1006CF0ab9867279E": "CSM: Settle EL stealing penalty",
+  "0xa890fc73e1b771Ee6073e2402E631c312FF92Cd9": "CSM: Set vetted gate tree",
+
+  // Simple DVT
+  "0x42f2532ab3d41dfD6030db1EC2fF3DBC8DCdf89a": "Simple DVT: Add node operators",
+  "0xfA3B3EE204E1f0f165379326768667300992530e": "Simple DVT: Activate node operators",
+  "0x3114bEbC222Faec27DF8AB7f9bD8dF2063d7fc77": "Simple DVT: Deactivate node operators",
+  "0x956c5dC6cfc8603b2293bF8399B718cbf61a9dda": "Simple DVT: Set vetted validators limits",
+  "0x2F98760650922cf65f1b596635bC5835b6E561d4": "Simple DVT: Set node operator names",
+  "0x3d267e4f8d9dCcc83c2DE66729e6A5B2B0856e31": "Simple DVT: Set node operator reward addresses",
+  "0xc3975Bc4091B585c57357990155B071111d7f4f8": "Simple DVT: Update target validator limits",
+  "0x8a437cd5685e270cDDb347eeEfEbD22109Fa42a9": "Simple DVT: Change node operator managers",
+  "0xAa3D6A8B52447F272c1E8FAaA06EA06658bd95E2": "Simple DVT: Submit exit request hashes",
+
+  // Sandbox stETH
+  "0xE5aE943A3AEFA44AD16438Bc3D2cA7654103F985": "Sandbox: Top up allowed recipients (stETH)",
+  "0x8f05Cc4cC42745E9723E105D38638683f162e1d9": "Sandbox: Add allowed recipient (stETH)",
+  "0x86E10ffC7c67A92e0c5E58ae42945213da43D0c7": "Sandbox: Remove allowed recipient (stETH)",
+
+  // Sandbox Stablecoins
+  "0x9D735eeDfa96F53BF9d31DbE81B51a5d333198dB": "Sandbox: Top up allowed recipients (Stablecoins)",
+
+  // MEV-Boost Relay
+  "0xF02DbeaA1Bbc90226CaB995db4C190DbE25983af": "MEV-Boost: Add relays",
+  "0x7FCc2901C6C3D62784cB178B14d44445B038f736": "MEV-Boost: Remove relays",
+  "0x27A99a7104190DdA297B222104A6C70A4Ca5A17e": "MEV-Boost: Edit relay",
+
+  // stVaults Management
+  "0x6e8D6e23A46AD61967CDD5C220B67645F46A2D7c": "stVaults: Register groups",
+  "0x99a645A4137ea171Ce4D43c22d30A71251D6Ed7d": "stVaults: Update groups share limit",
+  "0x4DF806111AC58e93d90E6D2fBE8522a76be6F499": "stVaults: Register tiers",
+  "0x1e71B8E60e0491A212999f3104A06913b77f438e": "stVaults: Alter tiers",
+  "0x395E6AF61B6Ba3EC0E72E168A2Ec8204589F357c": "stVaults: Set jail status",
+  "0x2D5b8B082d618A8d5DeFE3f4c2b2869e3f1C1a3D": "stVaults: Update vaults fees",
+  "0x820e9924C2059d37871acd6eccB578e4a3B15c30": "stVaults: Force validator exits",
+  "0x01C9dB53D7a87c3e47D537c925921fB735bEe6c9": "stVaults: Socialize bad debt",
+  "0xaccaE3755d63EeaAF2e525E780aEeA8D58700Ab9": "stVaults: Set liability shares target",
+};
+
 const FACTORY_LABELS: Record<number, Record<string, string>> = {
   1: MAINNET_FACTORY_LABELS,
   17000: HOLESKY_FACTORY_LABELS,
+  560048: HOODI_FACTORY_LABELS,
 };
 
 /**

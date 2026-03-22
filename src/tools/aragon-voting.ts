@@ -657,32 +657,46 @@ export async function handleAnalyzeAragonVote(args: Record<string, unknown>) {
       `  Script size: ${vote.script.length > 2 ? `${(vote.script.length - 2) / 2} bytes` : "N/A"}`,
     ];
 
-    // Fetch top voters from CastVote events
+    // Fetch top voters from CastVote events (chunked to avoid block range limits)
     try {
-      const logs = await publicClient.getLogs({
-        address: votingAddress,
-        event: {
-          type: "event",
-          name: "CastVote",
-          inputs: [
-            { name: "voteId", type: "uint256", indexed: true },
-            { name: "voter", type: "address", indexed: true },
-            { name: "supports", type: "bool", indexed: false },
-            { name: "stake", type: "uint256", indexed: false },
-          ],
-        },
-        args: { voteId: BigInt(vote_id) },
-        fromBlock: BigInt(Number(vote.snapshotBlock)),
-      });
+      const castVoteEvent = {
+        type: "event" as const,
+        name: "CastVote" as const,
+        inputs: [
+          { name: "voteId", type: "uint256" as const, indexed: true },
+          { name: "voter", type: "address" as const, indexed: true },
+          { name: "supports", type: "bool" as const, indexed: false },
+          { name: "stake", type: "uint256" as const, indexed: false },
+        ],
+      };
 
-      if (logs.length > 0) {
-        const voters = logs
-          .map((log: { args: { voter?: string; supports?: boolean; stake?: bigint } }) => ({
+      const startBlock = BigInt(Number(vote.snapshotBlock));
+      const currentBlock = await publicClient.getBlockNumber();
+      const MAX_BLOCK_RANGE = 10_000n;
+
+      let allLogs: Array<{ args: { voter?: string; supports?: boolean; stake?: bigint } }> = [];
+      let from = startBlock;
+      while (from <= currentBlock) {
+        const to = from + MAX_BLOCK_RANGE > currentBlock ? currentBlock : from + MAX_BLOCK_RANGE;
+        const chunk = await publicClient.getLogs({
+          address: votingAddress,
+          event: castVoteEvent,
+          args: { voteId: BigInt(vote_id) },
+          fromBlock: from,
+          toBlock: to,
+        });
+        allLogs = allLogs.concat(chunk as typeof allLogs);
+        from = to + 1n;
+      }
+
+      if (allLogs.length > 0) {
+        const voters = allLogs
+          .map((log) => ({
             voter: log.args.voter as string,
             supports: log.args.supports as boolean,
             stake: log.args.stake as bigint,
           }))
-          .sort((a: { stake: bigint }, b: { stake: bigint }) => Number(b.stake - a.stake));
+          .sort((a, b) => Number(b.stake - a.stake));
 
         const topVoters = voters.slice(0, 5);
 
@@ -692,7 +706,7 @@ export async function handleAnalyzeAragonVote(args: Record<string, unknown>) {
             `  ${v.voter}: ${v.supports ? "Yea" : "Nay"} — ${formatEther(v.stake)} LDO`,
           );
         }
-        lines.push(`  (${logs.length} total votes cast)`);
+        lines.push(`  (${allLogs.length} total votes cast)`);
       }
     } catch {
       lines.push("", "  (Unable to fetch voter breakdown — event logs may be unavailable)");

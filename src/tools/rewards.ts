@@ -56,7 +56,7 @@ export async function handleGetRewards(args: Record<string, unknown>) {
 
     const base = {
       address,
-      stepBlock: step_block ?? 50000,
+      stepBlock: step_block ?? 10000,
       includeOnlyRebases: true,
     };
 

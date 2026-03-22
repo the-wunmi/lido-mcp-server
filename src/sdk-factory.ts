@@ -2,6 +2,7 @@ import { LidoSDK } from "@lidofinance/lido-ethereum-sdk";
 import { createPublicClient, createWalletClient, http, type PublicClient, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { appConfig, consumePrivateKey } from "./config.js";
+import { chunkedTransport } from "./utils/chunked-transport.js";
 
 // SDK expects `PublicClient & { [key: string]: any }` and `WalletClient & { [key: string]: any }`.
 // The intersection with `{ [key: string]: any }` makes direct assignment incompatible
@@ -13,9 +14,19 @@ type SDKWalletClient = WalletClient & { [key: string]: unknown };
 // It is never stored on any exported object.
 const account = privateKeyToAccount(consumePrivateKey());
 
+// Wrap the HTTP transport with auto-chunking for eth_getLogs to work
+// within RPC provider block range limits (e.g. dRPC free tier = 10k blocks).
+const transport = chunkedTransport(
+  http(appConfig.rpcUrl, {
+    retryCount: 3,
+    retryDelay: 1000,
+    timeout: 30_000,
+  }),
+);
+
 export const publicClient = createPublicClient({
   chain: appConfig.chain,
-  transport: http(appConfig.rpcUrl),
+  transport,
 });
 
 export const walletClient = createWalletClient({

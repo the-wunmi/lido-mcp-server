@@ -9,6 +9,16 @@ import { validateChainId } from "./sdk-factory.js";
 import { appConfig, securityConfig } from "./config.js";
 import { sanitizeErrorMessage } from "./utils/errors.js";
 
+// The Lido SDK's Cache decorator creates fire-and-forget promises (via
+// `void result.then(...)`) without a .catch() handler.  When a cached SDK
+// method rejects (e.g. stakeEthEstimateGas with insufficient funds), the
+// rejection is caught by our tool-level try/catch, but the Cache decorator's
+// detached promise chain triggers an unhandled rejection that — in Node 16+ —
+// terminates the process.  Swallow these so the MCP server stays alive.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection (suppressed):", reason instanceof Error ? reason.message : reason);
+});
+
 const server = new Server(
   {
     name: "lido-mcp-server",
