@@ -4,29 +4,10 @@ import { publicClient, walletClient, getAccountAddress } from "../sdk-factory.js
 import { textResult, errorResult, ethAmountSchema } from "../utils/format.js";
 import { handleToolError, sanitizeErrorMessage } from "../utils/errors.js";
 import { validateReceiver, validateAmountCap } from "../utils/security.js";
+import { erc20Abi } from "../utils/erc20-abi.js";
 
 /** Rebasing stETH on Optimism (launched Oct 2024). */
 const OP_STETH_ADDRESS: Address = "0x76A50b8c7349cCDDb7578c6627e79b5d99D24138";
-
-const erc20Abi = [
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
 
 // --- Balance tool ---
 

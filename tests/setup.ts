@@ -26,8 +26,20 @@ vi.mock("../src/config.js", () => ({
   },
   consumePrivateKey: () => ("0x" + "ab".repeat(32)) as `0x${string}`,
   GOVERNANCE_WARNING_THRESHOLD: 50,
+  STETH_ADDRESSES: {
+    1: "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+  },
   WSTETH_ADDRESSES: {
     1: "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+  },
+  LDO_ADDRESSES: {
+    1: "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32",
+  },
+  WITHDRAWAL_QUEUE_ADDRESSES: {
+    1: "0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1",
+  },
+  L2_WSTETH_CHAINS: {
+    Arbitrum: { chainId: 42161, rpcUrl: "https://arb1.arbitrum.io/rpc", address: "0x5979D7b546E38E414F7E9822514be443A4800529" },
   },
 }));
 
@@ -80,6 +92,12 @@ vi.mock("../src/sdk-factory.js", () => ({
       }),
     },
     stake: {
+      getStakeLimitInfo: vi.fn().mockResolvedValue({
+        isStakingPaused: false,
+        isStakingLimitSet: true,
+        currentStakeLimit: 150000n * 10n ** 18n,
+        maxStakeLimit: 150000n * 10n ** 18n,
+      }),
       stakeEth: vi.fn().mockResolvedValue({
         hash: "0xmocktxhash",
         result: { stethReceived: 1000000000000000000n, sharesReceived: 900000000000000000n },

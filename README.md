@@ -60,13 +60,38 @@ This MCP server solves that by giving agents a structured, safe interface to the
 | | `lido_get_easytrack_config` | Easy Track system config: thresholds, duration, factories |
 | | `lido_get_easytrack_factories` | List registered EVM script factories with descriptions |
 | | `lido_object_easytrack_motion` | Object to an active Easy Track motion (with dry_run) |
+| **stVaults V3** | `lido_list_vaults` | List staking vaults with connection status and value |
+| | `lido_get_vault` | Full vault details: owner, operator, health, locked ETH |
+| | `lido_get_vault_hub_stats` | VaultHub overview: total vault count, addresses |
+| | `lido_vault_fund` | Deposit ETH into a staking vault (with dry_run) |
+| | `lido_vault_withdraw` | Withdraw ETH from a staking vault (with dry_run) |
+| | `lido_vault_pause_beacon_deposits` | Pause beacon chain deposits for a vault (with dry_run) |
+| | `lido_vault_resume_beacon_deposits` | Resume beacon chain deposits for a vault (with dry_run) |
+| | `lido_vault_mint_shares` | Mint stETH shares against vault collateral (with dry_run) |
+| | `lido_vault_burn_shares` | Burn stETH shares to reduce vault liability (with dry_run) |
+| | `lido_vault_rebalance` | Rebalance vault to restore health (with dry_run) |
+| | `lido_vault_create` | Create a new staking vault via VaultFactory (with dry_run) |
+| | `lido_vault_request_validator_exit` | Request validator exit from a vault (with dry_run) |
+| **Protocol Info** | `lido_get_protocol_info` | TVL, fee structure, total shares, buffered ETH, APR |
+| | `lido_get_staking_modules` | List all staking router modules with IDs and status |
+| | `lido_get_node_operators` | List curated module node operators with validator counts |
+| | `lido_get_contract_addresses` | All Lido contract addresses for the current chain |
+| **Token Management** | `lido_get_token_info` | stETH/wstETH/LDO metadata: name, symbol, supply |
+| | `lido_get_allowance` | Check token allowance for a spender address |
+| | `lido_approve_token` | Approve stETH/wstETH/LDO for a spender (with dry_run) |
+| | `lido_transfer_token` | Transfer stETH/wstETH/LDO to an address (with dry_run) |
+| | `lido_revoke_approval` | Revoke a previous token approval (with dry_run) |
+| **Withdrawal NFTs** | `lido_get_withdrawal_nft_owner` | Check owner of a withdrawal request NFT |
+| | `lido_transfer_withdrawal_nft` | Transfer a withdrawal NFT (with dry_run) |
+| | `lido_approve_withdrawal_nft` | Approve address to transfer a withdrawal NFT (with dry_run) |
 | **L2 wstETH** | `lido_l2_get_wsteth_balance` | wstETH + ETH balances on Base, Optimism, or Arbitrum |
 | | `lido_l2_transfer_wsteth` | Transfer wstETH on L2 (with dry_run) |
 | | `lido_l2_get_wsteth_info` | L2 wstETH contract info + total bridged supply |
+| | `lido_get_all_l2_balances` | Cross-chain wstETH balances across 11 L2s |
 | **L2 stETH** | `lido_l2_get_steth_balance` | Rebasing stETH + ETH balances on Optimism |
 | *(Optimism only)* | `lido_l2_transfer_steth` | Transfer rebasing stETH on Optimism (with dry_run) |
 
-### 4 Prompts (Guided Workflows)
+### 6 Prompts (Guided Workflows)
 
 | Prompt | What It Does |
 |--------|-------------|
@@ -74,14 +99,17 @@ This MCP server solves that by giving agents a structured, safe interface to the
 | `manage-position` | Comprehensive position analysis with monitoring bounds setup |
 | `withdraw-steth` | Full withdrawal lifecycle: request → monitor → claim |
 | `review-governance` | Governance state analysis with plain-language interpretation |
+| `manage-vault` | stVaults V3 management: list → inspect → fund/withdraw → verify |
+| `participate-governance` | Cross-system governance participation: check power, review proposals, vote |
 
-### 3 Resources (Live Data)
+### 4 Resources (Live Data)
 
 | Resource URI | Description |
 |-------------|-------------|
 | `lido://position/{address}` | JSON snapshot of a staking position |
 | `lido://protocol/status` | Protocol status: limits, queue mode, APR |
 | `lido://governance/state` | Governance state, veto signalling, escrow |
+| `lido://governance/votes` | Active governance items: Snapshot proposals, Easy Track motions |
 
 ### Agent Mental Model (`lido.skill.md`)
 
@@ -275,17 +303,22 @@ src/
 │   ├── rewards.ts        Historical staking rewards
 │   ├── stake.ts          Stake ETH → stETH
 │   ├── withdraw.ts       Request & claim withdrawals
-│   ├── withdrawal-status.ts Check withdrawal request status
+│   ├── withdrawal-status.ts Check withdrawal request status + NFT operations
 │   ├── withdrawal-time.ts  Withdrawal finalization time estimator
 │   ├── wrap.ts           Wrap/unwrap stETH ↔ wstETH
-│   ├── l2-wsteth.ts      L2 wstETH balance, transfer, info (Base/Optimism/Arbitrum)
+│   ├── stvaults.ts       stVaults V3: list, inspect, fund, withdraw, pause/resume, create, exit
+│   ├── protocol-info.ts  Protocol TVL, staking modules, node operators, addresses
+│   ├── tokens.ts         Token management: info, allowances, approve, transfer, revoke
+│   ├── l2-wsteth.ts      L2 wstETH balance, transfer, info + cross-chain queries
 │   └── l2-steth.ts       L2 rebasing stETH balance + transfer (Optimism only)
 └── utils/
     ├── dry-run.ts        Transaction simulation engine
     ├── errors.ts         Protocol-aware error translation
     ├── format.ts         Formatting utilities + Zod schemas
     ├── governance-labels.ts Shared governance state labels
-    └── security.ts       Receiver allowlist + amount cap validation
+    ├── security.ts       Receiver allowlist + amount cap validation
+    ├── vaulthub-abi.ts   VaultHub + StakingVault ABIs and addresses
+    └── easytrack-abi.ts  Easy Track contract ABIs and addresses
 ```
 
 **Key design decisions:**

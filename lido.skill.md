@@ -29,6 +29,7 @@ Use these to invoke guided multi-step workflows instead of manually calling tool
 - **`manage-position`** — Full position analysis: balances, APR, rewards, withdrawals, governance state, and recommendations. Supports setting monitoring bounds.
 - **`withdraw-steth`** — Guided withdrawal: shows balances → checks queue status → handles existing claims → dry-runs → executes.
 - **`review-governance`** — Governance analysis: state, veto signalling, escrow details, and plain-language explanation of what it means for your position.
+- **`manage-vault`** — stVaults V3 management: VaultHub overview → list vaults → inspect details → fund/withdraw → verify changes.
 - **`participate-governance`** — Comprehensive governance participation: checks voting power across all systems, reviews active proposals/motions (Aragon, Snapshot, Easy Track), and guides through voting or objecting.
 
 ## Available Resources
@@ -231,6 +232,63 @@ These operations are only available when the server is connected to Ethereum mai
 
 If a user wants to stake or withdraw, they need to bridge wstETH back to L1 first or use a separate L1-configured server instance.
 
+## stVaults V3 (Staking Vaults)
+
+Lido staking vaults (stVaults V3) allow institutional stakers and node operators to run customized staking setups through the VaultHub smart contract.
+
+### Vault Tools
+- **`lido_get_vault_hub_stats`** — VaultHub overview: total vault count, hub/factory addresses.
+- **`lido_list_vaults`** — List vaults with pagination. Shows connection status, health, and total value for each vault.
+- **`lido_get_vault`** — Full vault details: VaultHub status (connected, healthy, total value, withdrawable, locked, liability shares) and vault config (owner, node operator, depositor, beacon deposits paused, withdrawal credentials).
+- **`lido_vault_fund`** — Deposit ETH into a vault via VaultHub. Supports dry_run.
+- **`lido_vault_withdraw`** — Withdraw ETH from a vault. Supports dry_run. Optional recipient address.
+- **`lido_vault_pause_beacon_deposits`** — Pause beacon chain deposits for a vault. Supports dry_run.
+- **`lido_vault_resume_beacon_deposits`** — Resume beacon chain deposits. Supports dry_run.
+- **`lido_vault_create`** — Create a new staking vault via VaultFactory. Deploys a StakingVault + VaultDashboard. Caller becomes vault owner. Supports dry_run.
+- **`lido_vault_request_validator_exit`** — Request a validator exit from a vault. Signals the beacon chain to begin the exit process. Requires node operator role. Supports dry_run.
+
+### Safe Vault Management Pattern
+1. `lido_get_vault_hub_stats` → check hub health and factory availability
+2. `lido_list_vaults` → find available vaults (or `lido_vault_create` to deploy a new one)
+3. `lido_get_vault(address)` → inspect a specific vault (roles, health, value)
+4. `lido_vault_fund(dry_run)` or `lido_vault_withdraw(dry_run)` → simulate operations
+5. Execute after user confirmation
+
+### Vault Roles
+Operations are role-gated. The server checks roles before execution and warns if the caller doesn't match:
+- **Owner** — withdraw, pause/resume deposits, mint shares
+- **Node Operator** — request validator exits
+- **Depositor** — fund vault with ETH
+
+## Protocol Infrastructure
+
+- **`lido_get_protocol_info`** — Comprehensive protocol data: total pooled ETH (TVL), buffered ETH, total shares, share rate, current APR, fee structure, staking limits.
+- **`lido_get_staking_modules`** — List all staking router modules (Curated, Community, DVT, etc.) with status, fees, and exited validators.
+- **`lido_get_node_operators`** — List node operators in the curated staking module. Shows operator name, reward address, active/deposited/exited validator counts. Supports pagination.
+- **`lido_get_contract_addresses`** — All known Lido contract addresses for the current chain: stETH, wstETH, Aragon Voting, Easy Track, Staking Router, VaultHub, etc.
+
+## Token Management
+
+Manage stETH, wstETH, and LDO token operations — approvals, transfers, and allowances.
+
+- **`lido_get_token_info`** — Token metadata: name, symbol, decimals, total supply, contract address. Works for stETH, wstETH, or LDO.
+- **`lido_get_allowance`** — Check how much of your token a spender is authorized to use.
+- **`lido_approve_token`** — Approve a spender to use your tokens. Required before DeFi interactions. Use `amount: 'max'` for unlimited approval. Supports dry_run.
+- **`lido_transfer_token`** — Transfer tokens to another address. Validates receiver against security config. Supports dry_run.
+- **`lido_revoke_approval`** — Set allowance to 0 for a spender, revoking previous approval. Supports dry_run.
+
+## Withdrawal NFT Operations
+
+Withdrawal requests are ERC-721 NFTs that can be transferred between addresses. The NFT owner can claim the finalized ETH.
+
+- **`lido_get_withdrawal_nft_owner`** — Check who currently owns a withdrawal request NFT by its request ID.
+- **`lido_transfer_withdrawal_nft`** — Transfer a withdrawal NFT to another address. The new owner will be able to claim the ETH. Supports dry_run.
+- **`lido_approve_withdrawal_nft`** — Approve an address to transfer a specific withdrawal NFT. Supports dry_run.
+
+## Cross-Chain L2 Balances
+
+- **`lido_get_all_l2_balances`** — Query wstETH balances across all 11 supported L2 chains in a single call: Arbitrum, Optimism, Base, Polygon, zkSync Era, Mantle, Linea, Scroll, Mode, BNB Chain, and Zircuit. Uses parallel RPC queries with timeouts. Available from L1 mode.
+
 ## Common Mistakes to Avoid
 
 1. **Staking dust amounts** — Gas costs on small stakes (< 0.01 ETH) can exceed the rewards. Check the dry_run gas estimate first.
@@ -276,3 +334,16 @@ If a user wants to stake or withdraw, they need to bridge wstETH back to L1 firs
 | **L2: Token info** | `lido_l2_get_wsteth_info` |
 | **L2: Check stETH (OP)** | `lido_l2_get_steth_balance` |
 | **L2: Transfer stETH (OP)** | `lido_l2_transfer_steth(dry_run)` → `lido_l2_transfer_steth` |
+| **L2: All balances** | `lido_get_all_l2_balances` (cross-chain query) |
+| **Create vault** | `lido_vault_create(dry_run)` → `lido_vault_create` → `lido_get_vault` |
+| **Vault management** | `lido_get_vault_hub_stats` → `lido_list_vaults` → `lido_get_vault` → `lido_vault_fund(dry_run)` |
+| **Validator exit** | `lido_get_vault` → `lido_vault_request_validator_exit(dry_run)` → `lido_vault_request_validator_exit` |
+| **Protocol info** | `lido_get_protocol_info` + `lido_get_staking_modules` + `lido_get_node_operators` |
+| **Contract addresses** | `lido_get_contract_addresses` |
+| **Token info** | `lido_get_token_info` |
+| **Check allowance** | `lido_get_allowance` |
+| **Approve token** | `lido_approve_token(dry_run)` → `lido_approve_token` |
+| **Transfer token** | `lido_transfer_token(dry_run)` → `lido_transfer_token` |
+| **Revoke approval** | `lido_revoke_approval(dry_run)` → `lido_revoke_approval` |
+| **Withdrawal NFT owner** | `lido_get_withdrawal_nft_owner` |
+| **Transfer withdrawal NFT** | `lido_transfer_withdrawal_nft(dry_run)` → `lido_transfer_withdrawal_nft` |

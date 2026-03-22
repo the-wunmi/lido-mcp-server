@@ -1,45 +1,17 @@
 import { z } from "zod";
-import { formatEther, parseEther, type Address } from "viem";
+import { createPublicClient, formatEther, http, parseEther, type Address, type PublicClient } from "viem";
 import { publicClient, walletClient, getAccountAddress } from "../sdk-factory.js";
-import { appConfig, WSTETH_ADDRESSES } from "../config.js";
+import { appConfig, WSTETH_ADDRESSES, L2_WSTETH_CHAINS } from "../config.js";
 import { textResult, errorResult, ethAmountSchema } from "../utils/format.js";
 import { handleToolError, sanitizeErrorMessage } from "../utils/errors.js";
 import { validateReceiver, validateAmountCap } from "../utils/security.js";
-
-const erc20Abi = [
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "transfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "to", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-  {
-    name: "totalSupply",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
+import { erc20Abi } from "../utils/erc20-abi.js";
 
 function getWstethAddress(): Address {
   const addr = WSTETH_ADDRESSES[appConfig.chainId];
   if (!addr) throw new Error(`wstETH not available on chain ${appConfig.chainId}`);
   return addr;
 }
-
-// --- Balance tool ---
 
 export const l2BalanceToolDef = {
   name: "lido_l2_get_wsteth_balance",
@@ -99,8 +71,6 @@ export async function handleL2GetBalance(args: Record<string, unknown>) {
     return handleToolError(error);
   }
 }
-
-// --- Transfer tool ---
 
 export const l2TransferToolDef = {
   name: "lido_l2_transfer_wsteth",
@@ -242,7 +212,91 @@ export async function handleL2Transfer(args: Record<string, unknown>) {
   }
 }
 
-// --- Total supply / info tool ---
+const l2ChainEntries = Object.entries(L2_WSTETH_CHAINS).map(([name, cfg]) => ({
+  name,
+  ...cfg,
+}));
+
+const l2ClientCache = new Map<number, PublicClient>();
+
+function getL2Client(chainId: number, rpcUrl: string): PublicClient {
+  let client = l2ClientCache.get(chainId);
+  if (!client) {
+    client = createPublicClient({
+      transport: http(rpcUrl, { timeout: 10_000, retryCount: 1 }),
+    });
+    l2ClientCache.set(chainId, client);
+  }
+  return client;
+}
+
+export const l2AllBalancesToolDef = {
+  name: "lido_get_all_l2_balances",
+  description:
+    "Query wstETH balances across all supported L2 chains in a single call. " +
+    "Returns balances on Arbitrum, Optimism, Base, Polygon, zkSync, Mantle, Linea, Scroll, Mode, BNB Chain, and Zircuit.",
+  inputSchema: {
+    type: "object" as const,
+    properties: {
+      address: {
+        type: "string",
+        description: "Ethereum address (0x...). Defaults to the configured wallet.",
+      },
+    },
+  },
+  annotations: {
+    title: "[L2] All L2 wstETH Balances",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+};
+
+export async function handleL2GetAllBalances(args: Record<string, unknown>) {
+  try {
+    const { address: rawAddr } = balanceSchema.parse(args);
+    const address = (rawAddr ?? getAccountAddress()) as Address;
+
+    const results = await Promise.allSettled(
+      l2ChainEntries.map(async (chain) => {
+        const client = getL2Client(chain.chainId, chain.rpcUrl);
+        const balance = await client.readContract({
+          address: chain.address,
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [address],
+        });
+        return { name: chain.name, chainId: chain.chainId, balance };
+      })
+    );
+
+    const lines = [
+      `=== Cross-Chain wstETH Balances for ${address} ===`,
+      "",
+    ];
+
+    let totalFound = 0;
+    for (let i = 0; i < l2ChainEntries.length; i++) {
+      const chain = l2ChainEntries[i];
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        const bal = formatEther(result.value.balance);
+        lines.push(`  ${chain.name} (${chain.chainId}): ${bal} wstETH`);
+        if (result.value.balance > 0n) totalFound++;
+      } else {
+        lines.push(`  ${chain.name} (${chain.chainId}): query failed`);
+      }
+    }
+
+    lines.push("");
+    lines.push(`Chains with balance: ${totalFound}/${l2ChainEntries.length}`);
+
+    return textResult(lines.join("\n"));
+  } catch (error) {
+    return handleToolError(error);
+  }
+}
 
 export const l2InfoToolDef = {
   name: "lido_l2_get_wsteth_info",

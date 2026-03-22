@@ -53,6 +53,19 @@ const prompts = [
     arguments: [],
   },
   {
+    name: "manage-vault",
+    description:
+      "Guided workflow for managing a Lido staking vault (stVaults V3). " +
+      "Lists vaults, inspects details, and guides through funding or withdrawing.",
+    arguments: [
+      {
+        name: "vault_address",
+        description: "Vault contract address to manage. If omitted, lists available vaults first.",
+        required: false,
+      },
+    ],
+  },
+  {
     name: "participate-governance",
     description:
       "Comprehensive governance participation workflow. " +
@@ -196,6 +209,53 @@ function getPromptMessages(name: string, args: Record<string, string> | undefine
               "- Warning status 'Blocked' means governance actions are halted",
               "- The first seal rage-quit threshold is when veto signalling activates",
               "- The second seal threshold triggers an unstoppable rage quit",
+            ].join("\n"),
+          },
+        },
+      ];
+    }
+
+    case "manage-vault": {
+      const vaultAddress = args?.vault_address;
+      const vaultInstruction = vaultAddress
+        ? `I want to manage vault ${vaultAddress}.`
+        : "Help me find and select a vault to manage.";
+
+      return [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: [
+              `I want to manage a Lido staking vault (stVaults V3). ${vaultInstruction}`,
+              "",
+              "Please follow this vault management workflow:",
+              "",
+              "1. **Overview** — Use lido_get_vault_hub_stats to see the VaultHub state and total vault count",
+              "",
+              "2. **Find vaults** — If no vault address provided, use lido_list_vaults to list available vaults with their health and value",
+              "",
+              "3. **Inspect vault** — Use lido_get_vault with the selected vault address to see:",
+              "   - Connection and health status",
+              "   - Total value, withdrawable value, locked ETH",
+              "   - Owner, node operator, depositor addresses",
+              "   - Beacon chain deposit status",
+              "",
+              "4. **Actions** — Based on the vault state, offer relevant actions:",
+              "   - Fund the vault: dry-run with lido_vault_fund first",
+              "   - Withdraw from vault: dry-run with lido_vault_withdraw first",
+              "   - Mint stETH shares: dry-run with lido_vault_mint_shares (mints against locked collateral)",
+              "   - Burn shares: dry-run with lido_vault_burn_shares (reduces vault liability)",
+              "   - Rebalance: dry-run with lido_vault_rebalance (withdraw ETH and burn liability to restore health)",
+              "   - Pause/resume beacon deposits if needed",
+              "",
+              "5. **Verify** — After any action, re-query the vault to confirm the changes",
+              "",
+              "Important:",
+              "- Always dry-run before executing any vault operation",
+              "- Check that the vault is connected and healthy before funding or minting",
+              "- Verify you have the right permissions (owner/depositor) for write operations",
+              "- When minting, check remaining minting capacity to avoid exceeding the vault's share limit",
             ].join("\n"),
           },
         },

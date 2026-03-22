@@ -6,7 +6,7 @@ import { appConfig } from "../config.js";
 
 // ---- Addresses ----
 
-const EASY_TRACK_ADDRESSES: Record<number, Address> = {
+export const EASY_TRACK_ADDRESSES: Record<number, Address> = {
   1: "0xF0211b7660680B49De1A7E9f25C65660F0a13Fea",      // mainnet
   17000: "0x1763b9ED3586B08AE796c7787811a2E1bc16163a",   // holesky
   560048: "0x284D91a7D47850d21A6DEaaC6E538AC7E5E6fc2a",  // hoodi

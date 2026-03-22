@@ -63,15 +63,8 @@ const swapRouterAbi = [
   },
 ] as const;
 
-const erc20BalanceAbi = [
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
+// Use shared ERC-20 ABI (balanceOf is included)
+import { erc20Abi as erc20BalanceAbi } from "../utils/erc20-abi.js";
 
 function assertMainnet(): void {
   if (appConfig.chainId !== 1) {
