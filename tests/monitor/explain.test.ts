@@ -22,7 +22,13 @@ vi.mock("../../src/monitor/config.js", () => ({
       model: "claude-haiku-4-5-20251001",
     },
   },
+  normalizeAddress: (addr: string) => addr.toLowerCase(),
+  FETCH_TIMEOUT_MS: 15_000,
+  BIGINT_SCALE_18: 10n ** 18n,
 }));
+
+// vault-registry.js is loaded as a real module (no external deps besides config.js
+// which is mocked above). explain.ts imports isMellowCoreVault from vault-registry.js.
 
 import { explainAlert } from "../../src/monitor/explain.js";
 import type { VaultAlert } from "../../src/monitor/types.js";
@@ -53,7 +59,7 @@ function makeAlert(overrides?: Partial<VaultAlert>): VaultAlert {
         steth_apr: 3.1,
         spread_vs_steth: -0.3,
       },
-      current: { apr: 2.8, tvl: "1000", sharePrice: "1001000000000000000" },
+      current: { apr: 2.8, tvl: "1000", sharePrice: "1001000000000000000", assetSymbol: "ETH" },
       previous: { apr: 3.5, tvl: "950", sharePrice: "1000000000000000000" },
       benchmarks: { stethApr: 3.1 },
     },
@@ -109,6 +115,39 @@ describe("explainAlert", () => {
     expect(prompt).toContain("Spread vs stETH:");
   });
 
+  it("includes vault type and asset denomination in prompt", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Explanation text" }],
+    });
+
+    await explainAlert(makeAlert());
+
+    const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain("Vault type: ERC-4626");
+    expect(prompt).toContain("Asset denomination: ETH");
+  });
+
+  it("identifies Mellow Core vault type for Core Vault addresses", async () => {
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Explanation text" }],
+    });
+
+    await explainAlert(makeAlert({
+      vaultAddress: "0x6a37725ca7f4CE81c004c955f7280d5C704a249e",
+      context: {
+        expression: "tvl_change_pct < -10",
+        scope: { apr: 5.0, tvl: 0, tvl_prev: 55000, tvl_change_pct: -100, steth_apr: 2.5, spread_vs_steth: 2.5 },
+        current: { apr: 5.0, tvl: "0", sharePrice: "997466000000000000", assetSymbol: "WETH" },
+        previous: { apr: 5.0, tvl: "55000", sharePrice: "1000000000000000000" },
+        benchmarks: { stethApr: 2.5 },
+      },
+    }));
+
+    const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain("Vault type: Mellow Core");
+    expect(prompt).toContain("Asset denomination: WETH");
+  });
+
   it("includes benchmark in prompt when available", async () => {
     mockCreate.mockResolvedValueOnce({
       content: [{ type: "text", text: "Explanation text" }],
@@ -158,7 +197,7 @@ describe("explainAlert", () => {
           share_price: 1.001, share_price_prev: NaN, share_price_change_pct: NaN,
           steth_apr: 3.1, spread_vs_steth: -0.3,
         },
-        current: { apr: 2.8, tvl: "1000", sharePrice: "1001000000000000000" },
+        current: { apr: 2.8, tvl: "1000", sharePrice: "1001000000000000000", assetSymbol: "ETH" },
         previous: null,
         benchmarks: { stethApr: 3.1 },
       },

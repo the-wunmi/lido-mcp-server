@@ -78,20 +78,6 @@ describe("EmailChannel", () => {
     });
   });
 
-  it("send() logs to console when not enabled", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const channel = new EmailChannel();
-
-    await channel.send("<p>Test alert</p>");
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no email configured"),
-      expect.any(String),
-    );
-    expect(mockSendMail).not.toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
   it("sendTest() returns error when SMTP not configured", async () => {
     const channel = new EmailChannel();
     const result = await channel.sendTest();

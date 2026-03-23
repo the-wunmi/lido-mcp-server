@@ -29,6 +29,7 @@ import {
   _resetForTesting,
 } from "../../src/monitor/watcher.js";
 import { sendAlertNotification } from "../../src/monitor/notifier.js";
+import { getMainnetClient } from "../../src/monitor/mainnet-client.js";
 import {
   openDb,
   closeDb,
@@ -516,6 +517,32 @@ describe("watcher health check", () => {
     const alerts = getLatestAlerts();
     expect(alerts).toEqual([]);
     expect(loadAlertHistory).toHaveBeenCalled();
+  });
+
+  it("skips WS subscription for mellow_core vaults", async () => {
+    startWatcher();
+    const client = getMainnetClient();
+    const watchContractEvent = vi.mocked(client.watchContractEvent);
+    const callsBefore = watchContractEvent.mock.calls.length;
+
+    // Use the real earnETH address so readMellowCoreVault recognises it
+    const EARN_ETH = "0x6a37725ca7f4CE81c004c955f7280d5C704a249e" as `0x${string}`;
+
+    await addWatch({
+      address: EARN_ETH,
+      name: "EarnETH",
+      rules: [],
+      addedAt: Date.now(),
+      vaultType: "mellow_core",
+    });
+
+    // watchContractEvent should NOT have been called for the vault itself
+    // (only TokenRebased subscription may be called)
+    const newCalls = watchContractEvent.mock.calls.slice(callsBefore);
+    const vaultSubscriptions = newCalls.filter(
+      (call) => (call[0] as { address?: string }).address?.toLowerCase() === EARN_ETH.toLowerCase()
+    );
+    expect(vaultSubscriptions).toHaveLength(0);
   });
 
   it("processAlerts uses sendAlertNotification (not direct Telegram)", async () => {

@@ -1,14 +1,15 @@
 import { evaluate, parse, type MathNode } from "mathjs";
 import type { VaultSnapshot, BenchmarkRates } from "./types.js";
 import { BIGINT_SCALE_18 } from "./config.js";
+import { computeAllocationShift } from "./allocations.js";
 
 const ALLOWED_VARS = new Set([
   "apr",
   "apr_prev",
   "apr_delta",
-  "apy",        // alias for apr (backward compatibility)
-  "apy_prev",   // alias for apr_prev
-  "apy_delta",  // alias for apr_delta
+  "apy",
+  "apy_prev",
+  "apy_delta",
   "tvl",
   "tvl_prev",
   "tvl_change_pct",
@@ -17,6 +18,9 @@ const ALLOWED_VARS = new Set([
   "share_price_change_pct",
   "steth_apr",
   "spread_vs_steth",
+  "max_alloc_shift",
+  "num_protocols",
+  "top_alloc_pct",
 ]);
 
 const SAFE_FUNCTIONS = new Set([
@@ -91,11 +95,16 @@ function validateAst(node: MathNode, depth = 0): string | null {
 /**
  * Build the evaluation scope from current/previous snapshots and benchmarks.
  * Missing values default to NaN so expressions using them evaluate to false.
+ *
+ * @param allocationShiftPct - Pre-computed max allocation shift percentage.
+ *   Callers should compute this via computeAllocationShift() once and pass it
+ *   here to avoid duplicate computation in the detection pipeline.
  */
 export function buildScope(
   current: VaultSnapshot,
   previous: VaultSnapshot | undefined,
   benchmarks: BenchmarkRates,
+  allocationShiftPct?: number,
 ): Record<string, number> {
   const apr = current.apr ?? NaN;
   const aprPrev = previous?.apr ?? NaN;
@@ -120,11 +129,19 @@ export function buildScope(
 
   const aprDelta = !isNaN(apr) && !isNaN(aprPrev) ? apr - aprPrev : NaN;
 
+  let maxAllocShift = allocationShiftPct ?? NaN;
+  let numProtocols = NaN;
+  let topAllocPct = NaN;
+
+  if (current.allocations && current.allocations.length > 0) {
+    numProtocols = current.allocations.length;
+    topAllocPct = current.allocations[0].percentage;
+  }
+
   return {
     apr,
     apr_prev: aprPrev,
     apr_delta: aprDelta,
-    // apy aliases — same values (backward compatibility)
     apy: apr,
     apy_prev: aprPrev,
     apy_delta: aprDelta,
@@ -136,6 +153,9 @@ export function buildScope(
     share_price_change_pct: sharePriceChangePct,
     steth_apr: stethApr,
     spread_vs_steth: spreadVsSteth,
+    max_alloc_shift: maxAllocShift,
+    num_protocols: numProtocols,
+    top_alloc_pct: topAllocPct,
   };
 }
 
@@ -202,6 +222,9 @@ export const VARIABLE_DECIMALS: Record<string, number> = {
   share_price_change_pct: 2,
   steth_apr: 2,
   spread_vs_steth: 2,
+  max_alloc_shift: 2,
+  num_protocols: 0,
+  top_alloc_pct: 2,
 };
 
 export function renderTemplate(template: string, scope: Record<string, number>): string {
@@ -234,7 +257,12 @@ export function dryRunRule(
   previous: VaultSnapshot | undefined,
   benchmarks: BenchmarkRates,
 ): DryRunResult {
-  const scope = buildScope(current, previous, benchmarks);
+  let allocationShiftPct: number | undefined;
+  if (current.allocations?.length && previous?.allocations?.length) {
+    const shift = computeAllocationShift(current.allocations, previous.allocations);
+    allocationShiftPct = shift.maxShiftPct;
+  }
+  const scope = buildScope(current, previous, benchmarks, allocationShiftPct);
   const fired = evaluateRule(expression, scope);
   const renderedMessage = renderTemplate(message, scope);
   return { fired, scope, renderedMessage };

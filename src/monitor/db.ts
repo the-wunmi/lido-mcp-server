@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { monitorConfig, normalizeAddress } from "./config.js";
-import type { VaultWatch, VaultSnapshot, VaultAlert, AlertRule, AlertContext } from "./types.js";
+import type { VaultWatch, VaultSnapshot, VaultAlert, AlertRule, AlertContext, VaultType, ProtocolAllocation } from "./types.js";
 
 let db: Database.Database | null = null;
 
@@ -34,7 +34,8 @@ export function openDb(pathOverride?: string): void {
       address   TEXT PRIMARY KEY,
       name      TEXT NOT NULL,
       added_at  INTEGER NOT NULL,
-      recipient TEXT
+      recipient TEXT,
+      vault_type TEXT NOT NULL DEFAULT 'erc4626'
     );
 
     CREATE TABLE IF NOT EXISTS rules (
@@ -46,15 +47,16 @@ export function openDb(pathOverride?: string): void {
     );
 
     CREATE TABLE IF NOT EXISTS snapshots (
-      address        TEXT PRIMARY KEY REFERENCES watches(address) ON DELETE CASCADE,
-      name           TEXT NOT NULL,
-      apr            REAL,
-      tvl            TEXT NOT NULL,
-      tvl_raw        TEXT NOT NULL,
-      share_price    TEXT NOT NULL,
-      timestamp      INTEGER NOT NULL,
-      asset_decimals INTEGER NOT NULL,
-      asset_symbol   TEXT NOT NULL
+      address          TEXT PRIMARY KEY REFERENCES watches(address) ON DELETE CASCADE,
+      name             TEXT NOT NULL,
+      apr              REAL,
+      tvl              TEXT NOT NULL,
+      tvl_raw          TEXT NOT NULL,
+      share_price      TEXT NOT NULL,
+      timestamp        INTEGER NOT NULL,
+      asset_decimals   INTEGER NOT NULL,
+      asset_symbol     TEXT NOT NULL,
+      allocations_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS alerts (
@@ -85,14 +87,14 @@ export function closeDb(): void {
 export function insertWatch(watch: VaultWatch): void {
   const d = getDb();
   const insertW = d.prepare(
-    "INSERT INTO watches (address, name, added_at, recipient) VALUES (?, ?, ?, ?)"
+    "INSERT INTO watches (address, name, added_at, recipient, vault_type) VALUES (?, ?, ?, ?, ?)"
   );
   const insertR = d.prepare(
     "INSERT INTO rules (id, watch_addr, expression, severity, message) VALUES (?, ?, ?, ?, ?)"
   );
 
   d.transaction(() => {
-    insertW.run(normalizeAddress(watch.address), watch.name, watch.addedAt, watch.recipient ?? null);
+    insertW.run(normalizeAddress(watch.address), watch.name, watch.addedAt, watch.recipient ?? null, watch.vaultType ?? "erc4626");
     for (const rule of watch.rules) {
       insertR.run(rule.id, normalizeAddress(watch.address), rule.expression, rule.severity, rule.message);
     }
@@ -113,11 +115,12 @@ export function loadWatch(address: string): VaultWatch | undefined {
   const d = getDb();
   const normalAddr = normalizeAddress(address);
 
-  const row = d.prepare("SELECT address, name, added_at, recipient FROM watches WHERE address = ?").get(normalAddr) as {
+  const row = d.prepare("SELECT address, name, added_at, recipient, vault_type FROM watches WHERE address = ?").get(normalAddr) as {
     address: string;
     name: string;
     added_at: number;
     recipient: string | null;
+    vault_type: string | null;
   } | undefined;
 
   if (!row) return undefined;
@@ -139,17 +142,19 @@ export function loadWatch(address: string): VaultWatch | undefined {
       message: r.message,
     })),
     addedAt: row.added_at,
-    ...(row.recipient ? { recipient: row.recipient } : {}),
+    recipient: row.recipient,
+    vaultType: row.vault_type as VaultType | null,
   };
 }
 
 export function loadAllWatches(): VaultWatch[] {
   const d = getDb();
-  const rows = d.prepare("SELECT address, name, added_at, recipient FROM watches").all() as Array<{
+  const rows = d.prepare("SELECT address, name, added_at, recipient, vault_type FROM watches").all() as Array<{
     address: string;
     name: string;
     added_at: number;
     recipient: string | null;
+    vault_type: string | null;
   }>;
 
   const ruleRows = d.prepare("SELECT id, watch_addr, expression, severity, message FROM rules").all() as Array<{
@@ -172,13 +177,16 @@ export function loadAllWatches(): VaultWatch[] {
     });
   }
 
-  return rows.map((row) => ({
-    address: row.address as `0x${string}`,
-    name: row.name,
-    rules: rulesByAddr.get(row.address) ?? [],
-    addedAt: row.added_at,
-    ...(row.recipient ? { recipient: row.recipient } : {}),
-  }));
+  return rows.map((row) => {
+    return {
+      address: row.address as `0x${string}`,
+      name: row.name,
+      rules: rulesByAddr.get(row.address) ?? [],
+      addedAt: row.added_at,
+      recipient: row.recipient,
+      vaultType: row.vault_type as VaultType | null,
+    };
+  });
 }
 
 export function watchCount(): number {
@@ -204,8 +212,8 @@ export function upsertSnapshot(snapshot: VaultSnapshot): void {
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO snapshots
-        (address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol, allocations_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       normalizeAddress(snapshot.address),
@@ -216,7 +224,8 @@ export function upsertSnapshot(snapshot: VaultSnapshot): void {
       snapshot.sharePrice.toString(),
       snapshot.timestamp,
       snapshot.assetDecimals,
-      snapshot.assetSymbol
+      snapshot.assetSymbol,
+      snapshot.allocations ? JSON.stringify(snapshot.allocations) : null
     );
 }
 
@@ -226,7 +235,7 @@ export function deleteSnapshot(address: string): void {
 
 export function loadSnapshot(address: string): VaultSnapshot | undefined {
   const row = getDb()
-    .prepare("SELECT address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol FROM snapshots WHERE address = ?")
+    .prepare("SELECT address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol, allocations_json FROM snapshots WHERE address = ?")
     .get(normalizeAddress(address)) as {
     address: string;
     name: string;
@@ -237,9 +246,17 @@ export function loadSnapshot(address: string): VaultSnapshot | undefined {
     timestamp: number;
     asset_decimals: number;
     asset_symbol: string;
+    allocations_json: string | null;
   } | undefined;
 
   if (!row) return undefined;
+
+  let allocations: ProtocolAllocation[] | undefined;
+  if (row.allocations_json) {
+    try {
+      allocations = JSON.parse(row.allocations_json) as ProtocolAllocation[];
+    } catch {}
+  }
 
   return {
     address: row.address,
@@ -251,12 +268,13 @@ export function loadSnapshot(address: string): VaultSnapshot | undefined {
     timestamp: row.timestamp,
     assetDecimals: row.asset_decimals,
     assetSymbol: row.asset_symbol,
+    allocations,
   };
 }
 
 export function loadAllSnapshots(): Map<string, VaultSnapshot> {
   const rows = getDb()
-    .prepare("SELECT address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol FROM snapshots")
+    .prepare("SELECT address, name, apr, tvl, tvl_raw, share_price, timestamp, asset_decimals, asset_symbol, allocations_json FROM snapshots")
     .all() as Array<{
     address: string;
     name: string;
@@ -267,10 +285,17 @@ export function loadAllSnapshots(): Map<string, VaultSnapshot> {
     timestamp: number;
     asset_decimals: number;
     asset_symbol: string;
+    allocations_json: string | null;
   }>;
 
   const map = new Map<string, VaultSnapshot>();
   for (const row of rows) {
+    let allocations: ProtocolAllocation[] | undefined;
+    if (row.allocations_json) {
+      try {
+        allocations = JSON.parse(row.allocations_json) as ProtocolAllocation[];
+      } catch {}
+    }
     map.set(row.address, {
       address: row.address,
       name: row.name,
@@ -281,6 +306,7 @@ export function loadAllSnapshots(): Map<string, VaultSnapshot> {
       timestamp: row.timestamp,
       assetDecimals: row.asset_decimals,
       assetSymbol: row.asset_symbol,
+      allocations,
     });
   }
   return map;

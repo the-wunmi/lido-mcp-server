@@ -402,19 +402,24 @@ vi.mock("../src/monitor/mainnet-client.js", () => {
   const multicallFn = vi.fn().mockImplementation(({ contracts }: { contracts: unknown[] }) => {
     // Route based on number of contracts in the multicall batch
     const count = contracts.length;
-    if (count === 5) {
-      // readVaultOnChain batch 1: totalAssets, name, symbol, decimals, asset
+    if (count === 6) {
+      // readVaultOnChain batch 1: totalAssets, totalSupply, name, symbol, decimals, asset
       return Promise.resolve([
+        { status: "success", result: 1000n * 10n ** 18n },
         { status: "success", result: 1000n * 10n ** 18n },
         { status: "success", result: "TestVault" },
         { status: "success", result: "TV" },
         { status: "success", result: 18 },
         { status: "success", result: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
       ]);
-    } else if (count === 1) {
-      // readVaultOnChain batch 3: convertToAssets (share price)
+    } else if (count === 5) {
+      // readMellowCoreVault: totalShares, name, symbol, decimals, oracle.getReport
       return Promise.resolve([
-        { status: "success", result: 10n ** 18n },
+        { status: "success", result: 1000n * 10n ** 18n },       // totalShares
+        { status: "success", result: "CoreVault" },               // name
+        { status: "success", result: "CV" },                      // symbol
+        { status: "success", result: 18 },                        // decimals
+        { status: "success", result: [10n ** 18n, 1700000000, false] as readonly [bigint, number, boolean] }, // getReport
       ]);
     } else if (count === 2) {
       // readVaultOnChain batch 2: asset decimals + symbol

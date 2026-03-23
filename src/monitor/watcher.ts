@@ -48,7 +48,7 @@ let healthCheckInterval: ReturnType<typeof setInterval> | null = null;
 const pendingChecks = new Map<string, ReturnType<typeof setTimeout>>();
 const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_MS = 5_000;
-const POLLING_INTERVAL_MS = 5 * 60 * 1000;
+const POLLING_INTERVAL_MS = 0.5 * 60 * 1000;
 const MAX_WATCHES = 20;
 const MAX_RULES_PER_WATCH = 50;
 
@@ -207,7 +207,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   ]);
 }
 
-async function processAlerts(newAlerts: VaultAlert[], recipient?: string): Promise<void> {
+async function processAlerts(newAlerts: VaultAlert[], recipient?: string | null): Promise<void> {
   for (const alert of newAlerts) {
     try {
       const explanation = await withTimeout(explainAlert(alert), 15_000);
@@ -221,7 +221,6 @@ async function processAlerts(newAlerts: VaultAlert[], recipient?: string): Promi
   trimAlertHistory(monitorConfig.maxAlertHistory);
 }
 
-/** Maximum concurrent vault checks during a health-check cycle. */
 const MAX_CONCURRENT_CHECKS = 5;
 
 export function runHealthCheck(): Promise<void> {
@@ -314,7 +313,10 @@ export function startWatcher(): void {
   if (restoredWatches.length > 0) {
     console.error(`[VaultMonitor] Restored ${restoredWatches.length} watch(es).`);
     for (const watch of restoredWatches) {
-      subscribeToVault(watch);
+      // Mellow Core vaults have no ERC-4626 Deposit/Withdraw events — skip WS subscription
+      if (watch.vaultType !== "mellow_core") {
+        subscribeToVault(watch);
+      }
     }
     subscribeToTokenRebased();
   }
@@ -340,7 +342,9 @@ export function addWatch(watch: VaultWatch): Promise<VaultSnapshot> {
     const snapshot = await buildVaultSnapshot(watch);
 
     dbInsertWatch(watch);
-    subscribeToVault(watch);
+    if (watch.vaultType !== "mellow_core") {
+      subscribeToVault(watch);
+    }
     subscribeToTokenRebased();
     ensurePollingInterval();
 

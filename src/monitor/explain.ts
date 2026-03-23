@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { monitorConfig } from "./config.js";
 import type { VaultAlert } from "./types.js";
 import { extractErrorMessage } from "../utils/errors.js";
+import { isMellowCoreVault } from "./vault-registry.js";
 
 let client: Anthropic | null = null;
 
@@ -29,7 +30,7 @@ function sanitizeOnChainString(text: string, maxLength = 100): string {
   return text.replace(/[^a-zA-Z0-9 .()_-]/g, "").slice(0, maxLength);
 }
 
-const SYSTEM_PROMPT = `You are a DeFi vault monitoring assistant. You write Telegram alert messages for depositors who hold positions in ERC-4626 yield vaults on Ethereum.
+const SYSTEM_PROMPT = `You are a DeFi vault monitoring assistant. You write Telegram alert messages for depositors who hold positions in yield vaults on Ethereum (both ERC-4626 and Mellow Core vaults).
 
 Your job is to explain vault alerts in plain language. Each message must cover:
 1. What changed — the specific metric that triggered the alert
@@ -40,7 +41,9 @@ Rules:
 - Write for a depositor who understands DeFi basics but not every protocol detail
 - Be concise — 3-5 short paragraphs max, Telegram messages should be scannable
 - Use numbers from the data provided, don't make up figures
+- ALWAYS use the asset denomination provided in the data (e.g., USDC, WETH, ETH) — never assume ETH
 - If stETH benchmark data is available, compare against it
+- Use the vault type provided (ERC-4626 or Mellow Core) — do not assume ERC-4626
 - Never recommend specific financial actions ("sell", "buy") — frame as considerations
 - If you can't determine the cause, say so honestly rather than speculating wildly
 
@@ -62,9 +65,13 @@ export async function explainAlert(alert: VaultAlert): Promise<string | null> {
   const assetSymbol = sanitizeOnChainString(ctx.current.assetSymbol ?? "ETH", 20);
   const expression = sanitizeForPrompt(ctx.expression, 200);
 
+  const vaultType = isMellowCoreVault(alert.vaultAddress) ? "Mellow Core" : "ERC-4626";
+
   const dataBlock = [
     `<vault_data>`,
     `Vault: ${vaultName} (${alert.vaultAddress})`,
+    `Vault type: ${vaultType}`,
+    `Asset denomination: ${assetSymbol} (use this unit for all values — do NOT substitute with ETH)`,
     `Severity: ${alert.severity}`,
     `Rule triggered: ${expression}`,
     `Rule message: ${sanitizeForPrompt(alert.message, 300)}`,
@@ -97,6 +104,13 @@ export async function explainAlert(alert: VaultAlert): Promise<string | null> {
 
   if (metrics.length > 0) {
     dataBlock.push("", "Computed metrics:", ...metrics.map(m => `  ${m}`));
+  }
+
+  if (ctx.allocationShifts && ctx.allocationShifts.length > 0) {
+    dataBlock.push("", "Protocol allocation shifts:");
+    for (const shift of ctx.allocationShifts) {
+      dataBlock.push(`  ${shift.protocol}: ${shift.from.toFixed(1)}% → ${shift.to.toFixed(1)}% (${shift.delta > 0 ? "+" : ""}${shift.delta.toFixed(1)}pp)`);
+    }
   }
 
   dataBlock.push(`</vault_data>`);

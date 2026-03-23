@@ -1,5 +1,7 @@
 import type { Address } from "viem";
 
+export type VaultType = "erc4626" | "mellow_core";
+
 export interface AlertRule {
   id: string;
   expression: string;
@@ -12,7 +14,14 @@ export interface VaultWatch {
   name: string;
   rules: AlertRule[];
   addedAt: number;
-  recipient?: string;
+  recipient?: string | null;
+  vaultType?: VaultType | null;
+}
+
+export interface ProtocolAllocation {
+  protocol: string;
+  valueWei: string;
+  percentage: number;
 }
 
 export interface VaultSnapshot {
@@ -25,6 +34,7 @@ export interface VaultSnapshot {
   timestamp: number;
   assetDecimals: number;
   assetSymbol: string;
+  allocations?: ProtocolAllocation[];
 }
 
 export interface BenchmarkRates {
@@ -50,6 +60,7 @@ export interface AlertContext {
   current: { apr: number | null; tvl: string; sharePrice: string; assetSymbol: string };
   previous: { apr: number | null; tvl: string; sharePrice: string } | null;
   benchmarks: { stethApr: number | null };
+  allocationShifts?: { protocol: string; from: number; to: number; delta: number }[];
 }
 
 export interface NotificationChannel {
@@ -80,6 +91,7 @@ export interface SerializedSnapshot {
   timestamp: number;
   assetDecimals: number;
   assetSymbol: string;
+  allocations?: ProtocolAllocation[];
 }
 
 export function serializeSnapshot(s: VaultSnapshot): SerializedSnapshot {
@@ -93,6 +105,7 @@ export function serializeSnapshot(s: VaultSnapshot): SerializedSnapshot {
     timestamp: s.timestamp,
     assetDecimals: s.assetDecimals,
     assetSymbol: s.assetSymbol,
+    allocations: s.allocations,
   };
 }
 
@@ -116,5 +129,6 @@ export function deserializeSnapshot(s: SerializedSnapshot): VaultSnapshot {
     timestamp: s.timestamp,
     assetDecimals: s.assetDecimals ?? 18,
     assetSymbol: s.assetSymbol ?? "ETH",
+    allocations: s.allocations,
   };
 }

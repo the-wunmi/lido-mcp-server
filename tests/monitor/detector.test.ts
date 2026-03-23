@@ -268,4 +268,41 @@ describe("detectChanges (end-to-end with real rules)", () => {
 
     expect(alerts).toHaveLength(0);
   });
+
+  it("includes allocation shift data in alert context", () => {
+    vi.mocked(evaluateRule).mockReturnValue(true);
+
+    const watch: VaultWatch = {
+      ...baseWatch,
+      rules: [{
+        id: "alloc-rule",
+        expression: "max_alloc_shift > 5",
+        severity: "warning" as const,
+        message: "Allocation shifted",
+      }],
+    };
+
+    const previous = makeSnapshot({
+      allocations: [
+        { protocol: "Aave", valueWei: "500", percentage: 50 },
+        { protocol: "Morpho", valueWei: "500", percentage: 50 },
+      ],
+    });
+
+    const current = makeSnapshot({
+      allocations: [
+        { protocol: "Aave", valueWei: "300", percentage: 30 },
+        { protocol: "Morpho", valueWei: "700", percentage: 70 },
+      ],
+    });
+
+    const alerts = detectChanges(watch, current, previous, benchmarks);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].context.allocationShifts).toBeDefined();
+    expect(alerts[0].context.allocationShifts!.length).toBe(2);
+
+    const aaveShift = alerts[0].context.allocationShifts!.find(s => s.protocol === "Aave");
+    expect(aaveShift?.from).toBe(50);
+    expect(aaveShift?.to).toBe(30);
+  });
 });

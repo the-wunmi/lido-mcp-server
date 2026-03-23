@@ -18,6 +18,7 @@ import {
   runVaultCheck,
 } from "../monitor/watcher.js";
 import { buildVaultSnapshot, fetchStethBenchmark, fetchMellowVaults } from "../monitor/data.js";
+import { isMellowCoreVault, getAllMellowCoreVaults, getVaultType } from "../monitor/vault-registry.js";
 import { testAllChannels, getChannelStatus } from "../monitor/notifier.js";
 import { validateExpression, generateRuleId, getAvailableVariables, dryRunRule, MAX_EXPRESSION_LENGTH, MAX_MESSAGE_LENGTH } from "../monitor/rules.js";
 import {
@@ -61,7 +62,25 @@ export async function handleListEarnVaults(args: Record<string, unknown>) {
     const { chain_id } = listEarnVaultsSchema.parse(args);
 
     const vaults = await fetchMellowVaults();
+
+    // Core Vaults are in the API, but if the API is down we can still
+    // show their addresses from our hardcoded config as a fallback.
     if (!vaults) {
+      if (chain_id === 1) {
+        const coreVaults = getAllMellowCoreVaults();
+        const lines = [
+          `=== Mellow Earn Vaults (chain ${chain_id}) ===`,
+          `Total: ${coreVaults.length} (API unavailable — showing known Core Vaults only)`,
+          "",
+        ];
+        for (const cv of coreVaults) {
+          lines.push(`${cv.displayName} (${cv.displaySymbol}) [Core Vault]`);
+          lines.push(`  Address: ${cv.vault}`);
+          lines.push(`  Asset: ${cv.assetSymbol}`);
+          lines.push("");
+        }
+        return textResult(lines.join("\n"));
+      }
       return textResult("Unable to fetch vault data from the Mellow API. Try again later.");
     }
 
@@ -82,8 +101,9 @@ export async function handleListEarnVaults(args: Record<string, unknown>) {
       const symbol = v.symbol ?? "—";
       const apr = v.apr ?? v.apy ?? v.totalApy ?? v.metrics?.apy;
       const aprStr = typeof apr === "number" && isFinite(apr) ? `${apr.toFixed(2)}%` : "N/A";
+      const isCoreVault = isMellowCoreVault(v.address);
 
-      lines.push(`${name} (${symbol})`);
+      lines.push(`${name} (${symbol})${isCoreVault ? " [Core Vault]" : ""}`);
       lines.push(`  Address: ${v.address}`);
       lines.push(`  APR: ${aprStr}`);
       lines.push("");
@@ -99,18 +119,18 @@ const rulesDescription =
   "Array of alert rules. Each rule has: expression (mathjs expression evaluated against vault data — " +
   "available variables: apr (or apy), apr_prev (or apy_prev), apr_delta (or apy_delta), " +
   "tvl, tvl_prev, tvl_change_pct, share_price, " +
-  "share_price_prev, share_price_change_pct, steth_apr, spread_vs_steth), " +
+  "share_price_prev, share_price_change_pct, steth_apr, spread_vs_steth, " +
+  "max_alloc_shift (largest protocol allocation change in pp), num_protocols, top_alloc_pct), " +
   "severity ('info', 'warning', or 'critical'), " +
   "message (template string with {{variable}} interpolation, e.g. 'APR dropped to {{apr}}%').";
 
 export const watchVaultToolDef = {
   name: "lido_watch_vault",
   description:
-    "Start watching an ERC-4626 vault for yield and TVL changes. " +
+    "Start watching an ERC-4626 or Mellow Core vault for yield and TVL changes. " +
     "Subscribes to on-chain events and runs periodic health checks. " +
     "Alert rules use mathjs expressions evaluated against vault data. " +
     "Alerts are sent via Telegram (if configured) and/or email (if SMTP is configured and email_to is provided). " +
-    "Without notification channels, alerts are logged to console only. " +
     "Use lido_list_earn_vaults to discover available vault addresses.",
   inputSchema: {
     type: "object" as const,
@@ -179,7 +199,8 @@ export const addRuleToolDef = {
   description:
     "Add an alert rule to a watched vault. Rules use mathjs expressions evaluated against " +
     "vault data variables: apr (or apy), apr_prev, apr_delta, tvl, tvl_prev, tvl_change_pct, " +
-    "share_price, share_price_prev, share_price_change_pct, steth_apr, spread_vs_steth. " +
+    "share_price, share_price_prev, share_price_change_pct, steth_apr, spread_vs_steth, " +
+    "max_alloc_shift (largest protocol allocation change in pp), num_protocols, top_alloc_pct. " +
     "Use 'and'/'or' for boolean logic (not &&/||). Example: 'apr < 3.0 and tvl_change_pct > 5'.",
   inputSchema: {
     type: "object" as const,
@@ -290,8 +311,8 @@ export const listWatchesToolDef = {
 export const checkVaultToolDef = {
   name: "lido_check_vault",
   description:
-    "On-demand health check for any ERC-4626 vault (no watch required). " +
-    "Returns APR, TVL, share price, and stETH benchmark comparison.",
+    "On-demand health check for any ERC-4626 or Mellow Core vault (no watch required). " +
+    "Returns APR, TVL, share price, stETH benchmark comparison, and protocol allocation breakdown (for known Lido Earn vaults).",
   inputSchema: {
     type: "object" as const,
     properties: {
@@ -462,12 +483,15 @@ export async function handleWatchVault(args: Record<string, unknown>) {
       }
     }
 
+    const vaultType = getVaultType(address);
+
     const snapshot = await addWatch({
       address: address as Address,
       name: name ?? "",
       rules,
       addedAt: Date.now(),
       ...(email_to ? { recipient: email_to } : {}),
+      vaultType,
     });
 
     const lines = [
@@ -487,7 +511,6 @@ export async function handleWatchVault(args: Record<string, unknown>) {
         lines.push(`    ${r.expression} [${r.severity}] (${r.id})`);
       }
 
-      // Fire a real check in the background — sends actual alerts if rules match
       runVaultCheck(address as Address).catch(() => {});
     } else {
       lines.push("");
@@ -496,6 +519,7 @@ export async function handleWatchVault(args: Record<string, unknown>) {
       lines.push('  "spread_vs_steth < 0"           — Alert if vault underperforms stETH');
       lines.push('  "tvl_change_pct < -10"           — Alert on large TVL outflows');
       lines.push('  "share_price_change_pct < -0.1"  — Alert on share price drop (possible exploit)');
+      lines.push('  "max_alloc_shift > 10"           — Alert on large protocol allocation shift (>10pp)');
       lines.push("");
       lines.push("Use lido_add_rule to add one.");
     }
@@ -622,7 +646,8 @@ export async function handleCheckVault(args: Record<string, unknown>) {
 
     const { address, name } = checkVaultSchema.parse(args);
 
-    const watch = { address: address as Address, name: name ?? "", rules: [], addedAt: 0 };
+    const vaultType = getVaultType(address);
+    const watch = { address: address as Address, name: name ?? "", rules: [], addedAt: 0, vaultType };
     const snapshot = await buildVaultSnapshot(watch);
     const benchmarks = await fetchStethBenchmark();
 

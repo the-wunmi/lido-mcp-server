@@ -1,6 +1,7 @@
 import type { VaultWatch, VaultSnapshot, VaultAlert, BenchmarkRates, AlertContext } from "./types.js";
 import { monitorConfig, normalizeAddress } from "./config.js";
 import { buildScope, evaluateRule, renderTemplate } from "./rules.js";
+import { computeAllocationShift } from "./allocations.js";
 
 const lastAlertTimes = new Map<string, number>();
 
@@ -27,7 +28,17 @@ export function detectChanges(
 ): VaultAlert[] {
   const alerts: VaultAlert[] = [];
   const now = Math.floor(Date.now() / 1000);
-  const scope = buildScope(current, previous, benchmarks);
+
+  // Compute allocation shift once for both rule scope and alert context
+  let allocationShift: ReturnType<typeof computeAllocationShift> | undefined;
+  if (current.allocations?.length && previous?.allocations?.length) {
+    allocationShift = computeAllocationShift(current.allocations, previous.allocations);
+  }
+
+  const scope = buildScope(current, previous, benchmarks, allocationShift?.maxShiftPct);
+  const allocationShifts = allocationShift?.shifted.length
+    ? allocationShift.shifted
+    : undefined;
 
   for (const rule of watch.rules) {
     if (isDuplicate(rule.id, watch.address)) continue;
@@ -50,6 +61,7 @@ export function detectChanges(
         ? { apr: previous.apr, tvl: previous.tvl, sharePrice: previous.sharePrice.toString() }
         : null,
       benchmarks: { stethApr: benchmarks.stethApr },
+      allocationShifts,
     };
 
     alerts.push({

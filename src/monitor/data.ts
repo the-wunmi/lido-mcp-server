@@ -2,11 +2,13 @@ import { formatUnits, type Address, parseAbi } from "viem";
 import { z } from "zod";
 import { getMainnetClient } from "./mainnet-client.js";
 import { FETCH_TIMEOUT_MS, BIGINT_SCALE_18, normalizeAddress } from "./config.js";
-import type { VaultWatch, VaultSnapshot, BenchmarkRates } from "./types.js";
+import type { VaultWatch, VaultSnapshot, BenchmarkRates, VaultType } from "./types.js";
+import { readAllocations } from "./allocations.js";
+import { isMellowCoreVault, getMellowCoreConfig, getAllMellowCoreVaults, type MellowCoreVaultConfig } from "./vault-registry.js";
 
 const erc4626Abi = parseAbi([
   "function totalAssets() view returns (uint256)",
-  "function convertToAssets(uint256 shares) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
   "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
@@ -18,7 +20,21 @@ const erc20Abi = parseAbi([
   "function symbol() view returns (string)",
 ]);
 
-export async function readVaultOnChain(address: Address): Promise<{
+const mellowCoreShareManagerAbi = parseAbi([
+  "function totalShares() view returns (uint256)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+]);
+
+const mellowCoreOracleAbi = parseAbi([
+  "function getReport(address) view returns (uint224 priceD18, uint32 timestamp, bool isSuspicious)",
+]);
+
+export { isMellowCoreVault, getMellowCoreConfig, getAllMellowCoreVaults } from "./vault-registry.js";
+export type { MellowCoreVaultConfig } from "./vault-registry.js";
+
+async function readMellowCoreVault(address: Address, blockNumber?: bigint): Promise<{
   totalAssets: bigint;
   sharePrice: bigint;
   name: string;
@@ -27,14 +43,96 @@ export async function readVaultOnChain(address: Address): Promise<{
   assetDecimals: number;
   assetSymbol: string;
 }> {
+  const config = getMellowCoreConfig(address);
+  if (!config) throw new Error(`Not a known Mellow Core vault: ${address}`);
+
+  const client = getMainnetClient();
+  if (blockNumber === undefined) {
+    blockNumber = await client.getBlockNumber();
+  }
+
+  const results = await client.multicall({
+    contracts: [
+      { address: config.shareManager, abi: mellowCoreShareManagerAbi, functionName: "totalShares" },
+      { address: config.shareManager, abi: mellowCoreShareManagerAbi, functionName: "name" },
+      { address: config.shareManager, abi: mellowCoreShareManagerAbi, functionName: "symbol" },
+      { address: config.shareManager, abi: mellowCoreShareManagerAbi, functionName: "decimals" },
+      { address: config.oracle, abi: mellowCoreOracleAbi, functionName: "getReport", args: [config.asset] },
+    ],
+    allowFailure: true,
+    blockNumber,
+  });
+
+  // Critical: throw on failure so runHealthCheck skips this cycle and preserves
+  // the previous good snapshot, preventing false 0-TVL alert storms.
+  if (results[0].status !== "success") {
+    throw new Error(`totalShares() call failed for Core Vault ${address}`);
+  }
+  const totalShares = results[0].result as bigint;
+
+  const name = results[1].status === "success" ? (results[1].result as string) : "Unknown Core Vault";
+  const symbol = results[2].status === "success" ? (results[2].result as string) : "VAULT";
+  const vaultDecimals = results[3].status === "success" ? Number(results[3].result) : 18;
+
+  if (results[4].status !== "success") {
+    throw new Error(`oracle.getReport() call failed for Core Vault ${address}`);
+  }
+  const report = results[4].result as readonly [bigint, number, boolean];
+  const [priceD18, , isSuspicious] = report;
+
+  if (isSuspicious) {
+    throw new Error(`Oracle reports suspicious price for Core Vault ${address} — skipping snapshot`);
+  }
+
+  if (priceD18 === 0n) {
+    throw new Error(`Oracle returned zero price for Core Vault ${address} — cannot compute TVL`);
+  }
+
+  // priceD18 is always 18 decimals; scale to asset decimals (e.g. /1e12 for 6-dec USDC)
+  const decimalDiff = 18 - config.assetDecimals;
+  const sharePrice = decimalDiff > 0
+    ? priceD18 / (10n ** BigInt(decimalDiff))
+    : priceD18;
+
+  const totalAssets = (totalShares * priceD18) / BIGINT_SCALE_18;
+  const totalAssetsInAssetDecimals = decimalDiff > 0
+    ? totalAssets / (10n ** BigInt(decimalDiff))
+    : totalAssets;
+
+  return {
+    totalAssets: totalAssetsInAssetDecimals,
+    sharePrice,
+    name,
+    symbol,
+    vaultDecimals,
+    assetDecimals: config.assetDecimals,
+    assetSymbol: config.assetSymbol,
+  };
+}
+
+export async function readVaultOnChain(address: Address, vaultType?: VaultType, blockNumber?: bigint): Promise<{
+  totalAssets: bigint;
+  sharePrice: bigint;
+  name: string;
+  symbol: string;
+  vaultDecimals: number;
+  assetDecimals: number;
+  assetSymbol: string;
+}> {
+  if (vaultType === "mellow_core" || isMellowCoreVault(address)) {
+    return readMellowCoreVault(address, blockNumber);
+  }
+
   const client = getMainnetClient();
 
-  // Pin all reads to the same block for consistency
-  const blockNumber = await client.getBlockNumber();
+  if (blockNumber === undefined) {
+    blockNumber = await client.getBlockNumber();
+  }
 
   const vaultResults = await client.multicall({
     contracts: [
       { address, abi: erc4626Abi, functionName: "totalAssets" },
+      { address, abi: erc4626Abi, functionName: "totalSupply" },
       { address, abi: erc4626Abi, functionName: "name" },
       { address, abi: erc4626Abi, functionName: "symbol" },
       { address, abi: erc4626Abi, functionName: "decimals" },
@@ -46,19 +144,18 @@ export async function readVaultOnChain(address: Address): Promise<{
 
   const totalAssetsOk = vaultResults[0].status === "success";
   const totalAssets = totalAssetsOk ? (vaultResults[0].result as bigint) : 0n;
-  const name = vaultResults[1].status === "success" ? (vaultResults[1].result as string) : "Unknown Vault";
-  const symbol = vaultResults[2].status === "success" ? (vaultResults[2].result as string) : "VAULT";
-  const vaultDecimals = vaultResults[3].status === "success" ? Number(vaultResults[3].result) : 18;
-  const assetAddress = vaultResults[4].status === "success" ? (vaultResults[4].result as Address) : null;
+  const totalSupply = vaultResults[1].status === "success" ? (vaultResults[1].result as bigint) : 0n;
+  const name = vaultResults[2].status === "success" ? (vaultResults[2].result as string) : "Unknown Vault";
+  const symbol = vaultResults[3].status === "success" ? (vaultResults[3].result as string) : "VAULT";
+  const vaultDecimals = vaultResults[4].status === "success" ? Number(vaultResults[4].result) : 18;
+  const assetAddress = vaultResults[5].status === "success" ? (vaultResults[5].result as Address) : null;
 
   if (!totalAssetsOk) {
     console.error(`[VaultMonitor] Warning: totalAssets() call failed for ${address} — may not be a valid ERC-4626 vault.`);
   }
 
-  const oneShare = 10n ** BigInt(vaultDecimals);
-
-  const assetPromise = assetAddress
-    ? client.multicall({
+  const assetResults = assetAddress
+    ? await client.multicall({
         contracts: [
           { address: assetAddress, abi: erc20Abi, functionName: "decimals" },
           { address: assetAddress, abi: erc20Abi, functionName: "symbol" },
@@ -67,16 +164,6 @@ export async function readVaultOnChain(address: Address): Promise<{
         blockNumber,
       })
     : null;
-
-  const sharePricePromise = client.multicall({
-    contracts: [
-      { address, abi: erc4626Abi, functionName: "convertToAssets", args: [oneShare] },
-    ],
-    allowFailure: true,
-    blockNumber,
-  });
-
-  const [assetResults, sharePriceResults] = await Promise.all([assetPromise, sharePricePromise]);
 
   let assetDecimals = vaultDecimals;
   let assetSymbol = "ETH";
@@ -90,14 +177,11 @@ export async function readVaultOnChain(address: Address): Promise<{
     }
   }
 
-  const sharePriceOk = sharePriceResults[0].status === "success";
-  const sharePrice = sharePriceOk
-    ? (sharePriceResults[0].result as bigint)
-    : 10n ** BigInt(assetDecimals);
-
-  if (!sharePriceOk) {
-    console.error(`[VaultMonitor] Warning: convertToAssets() call failed for ${address} — using 1:1 share price fallback.`);
-  }
+  // Avoid convertToAssets() which some vaults don't implement
+  const oneShare = 10n ** BigInt(assetDecimals);
+  const sharePrice = totalSupply > 0n
+    ? (totalAssets * oneShare) / totalSupply
+    : oneShare; // 1:1 fallback when supply is zero
 
   return { totalAssets, sharePrice, name, symbol, vaultDecimals, assetDecimals, assetSymbol };
 }
@@ -254,13 +338,23 @@ export async function buildVaultSnapshot(
   watch: VaultWatch,
   previousSnapshot?: VaultSnapshot,
 ): Promise<VaultSnapshot> {
-  const onChain = await readVaultOnChain(watch.address);
+  const client = getMainnetClient();
+  const blockNumber = await client.getBlockNumber();
+
+  const onChain = await readVaultOnChain(watch.address, watch.vaultType, blockNumber);
 
   let apr = await fetchMellowVaultApr(watch.address);
 
   if (apr === null && previousSnapshot && previousSnapshot.sharePrice > 0n) {
     const elapsed = Math.floor(Date.now() / 1000) - previousSnapshot.timestamp;
     apr = computeApr(onChain.sharePrice, previousSnapshot.sharePrice, elapsed);
+  }
+
+  let allocations = undefined;
+  try {
+    allocations = await readAllocations(watch.address, blockNumber) ?? undefined;
+  } catch (err) {
+    console.error(`[VaultMonitor] Failed to read allocations for ${watch.address}:`, err instanceof Error ? err.message : String(err));
   }
 
   return {
@@ -273,5 +367,6 @@ export async function buildVaultSnapshot(
     timestamp: Math.floor(Date.now() / 1000),
     assetDecimals: onChain.assetDecimals,
     assetSymbol: onChain.assetSymbol,
+    allocations,
   };
 }

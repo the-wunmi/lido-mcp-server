@@ -10,7 +10,7 @@ AI agents need to interact with DeFi protocols, but bridging natural language to
 
 - **Every write operation supports dry-run simulation** — agents preview gas costs and verify transactions before executing
 - **A mental model document** (`lido.skill.md`) teaches agents Lido concepts before they act — rebasing mechanics, wstETH vs stETH tradeoffs, safe staking patterns
-- **Live vault monitoring with intelligent alerts** — watch Lido Earn vaults for yield changes, TVL shifts, and share price anomalies, with alerts in plain language via Telegram or email
+- **Live vault monitoring with intelligent alerts** — watch Lido Earn vaults for yield changes, TVL shifts, share price anomalies, and protocol allocation shifts (Aave, Morpho, Pendle, Gearbox, Maple), with alerts in plain language via Telegram or email
 - **Flexible rule engine** — define alert conditions as readable expressions like `apr < 3.0` or `spread_vs_steth < -0.5`, with automatic stETH benchmark comparison
 - **AI-powered explanations** — optionally uses Claude to translate raw vault events into plain-language messages explaining what changed, why, and whether you need to act
 - **Security guardrails** — `read-only`, `dry-run-only`, and `full` modes, receiver allowlists, per-transaction ETH caps
@@ -59,8 +59,9 @@ Watches Lido Earn vaults (EarnETH, EarnUSD) and tells depositors when something 
 
 The monitor runs continuously:
 - Subscribes to on-chain **`Deposit`/`Withdraw`** events on each vault and **`TokenRebased`** on stETH for near-real-time reaction
-- Runs a **5-minute polling** health check as a fallback
+- Runs a **30-second polling** health check as a fallback
 - Compares vault APR against the **stETH SMA APR** from the Lido API on every check
+- **Detects protocol allocation shifts** across underlying protocols (Aave, Morpho, Pendle, Gearbox, Maple) by reading on-chain subvault balances for known Lido Earn vaults
 - Persists all state (watches, snapshots, alerts, dedup) in **SQLite** — survives restarts
 - **6-hour dedup** window per rule per vault prevents alert fatigue
 
@@ -90,6 +91,9 @@ Rules aren't a fixed set of predefined alerts — they're **open-ended expressio
 | `share_price_change_pct` | Share price change as a percentage |
 | `steth_apr` | stETH SMA APR benchmark (from Lido API) |
 | `spread_vs_steth` | Vault APR minus stETH APR (positive = outperforming) |
+| `max_alloc_shift` | Largest protocol allocation change between snapshots (pp) |
+| `num_protocols` | Number of protocols with active allocations |
+| `top_alloc_pct` | Largest single protocol allocation (%) |
 
 **Example rules:**
 
@@ -104,6 +108,8 @@ Rules aren't a fixed set of predefined alerts — they're **open-ended expressio
 | `abs(apr_delta) > 2.0` | Large APR swing in either direction |
 | `apr < steth_apr - 1.0` | Falls more than 1pp behind stETH benchmark |
 | `apr > apr_prev * 1.5` | APR spiked to 1.5x its previous value |
+| `max_alloc_shift > 10` | Protocol allocation shifted by more than 10pp |
+| `top_alloc_pct > 80` | Single protocol holds >80% of vault capital |
 
 Supports `and`/`or`/`not` boolean logic, comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`), arithmetic (`+`, `-`, `*`, `/`), and safe math functions (`abs`, `min`, `max`, `round`, `floor`, `ceil`, `sqrt`).
 
@@ -116,6 +122,16 @@ APR dropped to {{apr}}%, below your 3% floor. stETH is at {{steth_apr}}%.
 If no message is provided, one is auto-generated from the expression pattern.
 
 The rule engine is **sandboxed** — expressions are parsed into an AST and validated against an allowlist of variables, functions, and node types. No arbitrary code execution.
+
+### Protocol Allocation Detection
+
+For known Lido Earn vaults (strETH/EarnETH), the monitor reads on-chain balances across each vault subvault to determine how capital is distributed across underlying protocols — Aave, Morpho, Pendle, Gearbox, Maple, and others. Each health check compares the current allocation to the previous snapshot and detects shifts.
+
+Allocation data appears in:
+- **Health reports** (`lido_check_vault`) — shows per-protocol percentage breakdown
+- **Alert context** — when any rule fires, the alert includes allocation shift details (protocol name, from/to percentages, delta)
+- **AI explanations** — the LLM receives allocation shift data and can explain rebalancing events in plain language
+- **Rule variables** — `max_alloc_shift`, `num_protocols`, and `top_alloc_pct` let you write rules like `max_alloc_shift > 10` (alert when any protocol's share shifts by more than 10pp)
 
 ### MCP-Callable Vault Health
 
@@ -194,9 +210,16 @@ Response:
   stETH APR (SMA): 3.40%
   Spread: 1.80pp above stETH benchmark
 
+  --- Protocol Allocations ---
+  Aave: 32.1%
+  Morpho: 28.4%
+  Pendle: 18.7%
+  Gearbox: 12.3%
+  Maple: 8.5%
+
   Last checked: 2025-03-23T14:30:00.000Z
 
-Agent: → Spread is positive and significant, decides to deposit
+Agent: → Diversified allocation, positive spread — decides to deposit
 ```
 
 ### 4. Natural-language rule configuration

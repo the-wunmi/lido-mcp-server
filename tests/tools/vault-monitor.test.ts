@@ -49,11 +49,17 @@ describe("handleListEarnVaults", () => {
     expect(result.content[0].text).toContain("2.88%");
   });
 
-  it("returns error message when API is down", async () => {
+  it("falls back to known Core Vaults when API is down", async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
 
     const result = await handleListEarnVaults({});
-    expect(result.content[0].text).toContain("Unable to fetch");
+    // When API is unavailable, we still show known Core Vault addresses
+    expect(result.content[0].text).toContain("API unavailable");
+    expect(result.content[0].text).toContain("strETH");
+    expect(result.content[0].text).toContain("earnETH");
+    expect(result.content[0].text).toContain("earnUSD");
+    expect(result.content[0].text).toContain("WETH");
+    expect(result.content[0].text).toContain("USDC");
   });
 
   it("rejects invalid address format", async () => {

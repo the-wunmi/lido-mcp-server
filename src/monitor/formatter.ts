@@ -1,4 +1,4 @@
-import type { VaultAlert, VaultSnapshot, VaultWatch, BenchmarkRates } from "./types.js";
+import type { VaultAlert, VaultSnapshot, VaultWatch, BenchmarkRates, ProtocolAllocation } from "./types.js";
 import { safeBigInt } from "./types.js";
 import { BIGINT_SCALE_18, normalizeAddress } from "./config.js";
 import { VARIABLE_DECIMALS, type DryRunResult } from "./rules.js";
@@ -30,10 +30,8 @@ export function formatAlertForTelegram(alert: VaultAlert, aiExplanation?: string
   lines.push("");
 
   if (aiExplanation) {
-    // AI is instructed to produce Telegram Markdown — pass through as-is
     lines.push(aiExplanation);
   } else {
-    // User-provided rule message templates may contain Markdown special chars
     lines.push(escapeTelegramMarkdown(alert.message));
     lines.push("");
 
@@ -64,6 +62,15 @@ export function formatAlertForTelegram(alert: VaultAlert, aiExplanation?: string
       lines.push("_Context:_");
       for (const cl of contextLines) {
         lines.push(`\u2022 ${cl}`);
+      }
+      lines.push("");
+    }
+
+    if (ctx.allocationShifts && ctx.allocationShifts.length > 0) {
+      lines.push("_Allocation shifts:_");
+      for (const shift of ctx.allocationShifts.slice(0, 5)) {
+        const dir = shift.delta > 0 ? "↑" : "↓";
+        lines.push(`\u2022 ${shift.protocol}: ${shift.from.toFixed(1)}% → ${shift.to.toFixed(1)}% (${dir}${Math.abs(shift.delta).toFixed(1)}pp)`);
       }
       lines.push("");
     }
@@ -133,6 +140,14 @@ export function formatVaultHealthReport(snapshot: VaultSnapshot, benchmarks?: Be
       const spread = snapshot.apr - benchmarks.stethApr;
       const label = spread >= 0 ? "above" : "below";
       lines.push(`Spread: ${Math.abs(spread).toFixed(2)}pp ${label} stETH benchmark`);
+    }
+  }
+
+  if (snapshot.allocations && snapshot.allocations.length > 0) {
+    lines.push("");
+    lines.push("--- Protocol Allocations ---");
+    for (const alloc of snapshot.allocations) {
+      lines.push(`${alloc.protocol}: ${alloc.percentage.toFixed(1)}%`);
     }
   }
 
@@ -276,6 +291,15 @@ export function formatAlertForEmail(alert: VaultAlert, aiExplanation?: string | 
       parts.push("<p><em>Context:</em></p><ul>");
       for (const cl of contextLines) {
         parts.push(`<li>${escapeHtml(cl)}</li>`);
+      }
+      parts.push("</ul>");
+    }
+
+    if (ctx.allocationShifts && ctx.allocationShifts.length > 0) {
+      parts.push("<p><em>Allocation shifts:</em></p><ul>");
+      for (const shift of ctx.allocationShifts.slice(0, 5)) {
+        const dir = shift.delta > 0 ? "↑" : "↓";
+        parts.push(`<li>${escapeHtml(shift.protocol)}: ${shift.from.toFixed(1)}% → ${shift.to.toFixed(1)}% (${dir}${Math.abs(shift.delta).toFixed(1)}pp)</li>`);
       }
       parts.push("</ul>");
     }

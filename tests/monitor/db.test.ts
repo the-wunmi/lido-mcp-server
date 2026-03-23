@@ -134,7 +134,28 @@ describe("db module", () => {
     it("inserts watch without recipient", () => {
       insertWatch(makeWatch());
       const watches = loadAllWatches();
-      expect(watches[0].recipient).toBeUndefined();
+      expect(watches[0].recipient).toBeNull();
+    });
+
+    it("inserts watch with vaultType mellow_core", () => {
+      insertWatch(makeWatch({ vaultType: "mellow_core" }));
+      const watch = loadWatch(ADDR);
+      expect(watch).toBeDefined();
+      expect(watch!.vaultType).toBe("mellow_core");
+    });
+
+    it("defaults vaultType to erc4626", () => {
+      insertWatch(makeWatch());
+      const watch = loadWatch(ADDR);
+      expect(watch).toBeDefined();
+      expect(watch!.vaultType).toBe("erc4626");
+    });
+
+    it("loads vaultType via loadAllWatches", () => {
+      insertWatch(makeWatch({ vaultType: "mellow_core" }));
+      const watches = loadAllWatches();
+      expect(watches).toHaveLength(1);
+      expect(watches[0].vaultType).toBe("mellow_core");
     });
 
     it("deletes a watch and cascades to rules", () => {
