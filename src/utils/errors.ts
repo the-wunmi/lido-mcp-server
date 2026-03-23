@@ -1,6 +1,10 @@
 import { ZodError } from "zod";
 import { errorResult } from "./format.js";
 
+export function extractErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function handleToolError(error: unknown) {
   if (error instanceof ZodError) {
     const issues = error.issues.map(i => `  - ${i.path.join(".")}: ${i.message}`).join("\n");

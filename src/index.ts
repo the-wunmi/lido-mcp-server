@@ -8,6 +8,7 @@ import { registerResources } from "./resources.js";
 import { validateChainId } from "./sdk-factory.js";
 import { appConfig, securityConfig } from "./config.js";
 import { sanitizeErrorMessage } from "./utils/errors.js";
+import { startWatcher, stopWatcher } from "./monitor/watcher.js";
 
 // The Lido SDK's Cache decorator creates fire-and-forget promises (via
 // `void result.then(...)`) without a .catch() handler.  When a cached SDK
@@ -58,6 +59,15 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Lido MCP Server running on stdio");
+
+  startWatcher();
+
+  const shutdown = () => {
+    stopWatcher();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 main().catch((err) => {

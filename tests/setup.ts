@@ -4,12 +4,10 @@
  */
 import { vi } from "vitest";
 
-// ─── Environment variables (must be set before any config import) ────────────
 process.env.LIDO_RPC_URL = "https://mock-rpc.test";
 process.env.LIDO_PRIVATE_KEY = "0x" + "ab".repeat(32);
 process.env.LIDO_CHAIN_ID = "1";
 
-// ─── Mock: ../config.js ─────────────────────────────────────────────────────
 vi.mock("../src/config.js", () => ({
   appConfig: {
     rpcUrl: "https://mock-rpc.test",
@@ -43,7 +41,6 @@ vi.mock("../src/config.js", () => ({
   },
 }));
 
-// ─── Mock: ../sdk-factory.js ────────────────────────────────────────────────
 const MOCK_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678" as const;
 
 vi.mock("../src/sdk-factory.js", () => ({
@@ -243,7 +240,203 @@ vi.mock("../src/sdk-factory.js", () => ({
   validateChainId: vi.fn().mockResolvedValue(undefined),
 }));
 
-// ─── Mock: dotenv ────────────────────────────────────────────────────────────
+vi.mock("../src/monitor/watcher.js", () => ({
+  startWatcher: vi.fn(),
+  stopWatcher: vi.fn(),
+  addWatch: vi.fn().mockResolvedValue({
+    address: "0x82dc3260f599f4fC4307209A1E3B53dDCA4C585e",
+    name: "TestVault",
+    apr: 3.5,
+    tvl: "1000",
+    tvlRaw: 1000n * 10n ** 18n,
+    sharePrice: 10n ** 18n,
+    timestamp: 1700000000,
+    assetDecimals: 18,
+    assetSymbol: "WETH",
+  }),
+  removeWatch: vi.fn().mockResolvedValue({
+    address: "0x82dc3260f599f4fC4307209A1E3B53dDCA4C585e",
+    name: "TestVault",
+    rules: [{ id: "rule-1", expression: "apy < 3.0", severity: "warning", message: "APY below 3%" }],
+    addedAt: 1700000000000,
+  }),
+  addRule: vi.fn().mockResolvedValue({
+    address: "0x82dc3260f599f4fC4307209A1E3B53dDCA4C585e",
+    name: "TestVault",
+    rules: [{ id: "rule-1", expression: "apy < 3.0", severity: "warning", message: "APY below 3%" }],
+    addedAt: 1700000000000,
+  }),
+  removeRule: vi.fn().mockResolvedValue({
+    address: "0x82dc3260f599f4fC4307209A1E3B53dDCA4C585e",
+    name: "TestVault",
+    rules: [],
+    addedAt: 1700000000000,
+  }),
+  getWatch: vi.fn().mockReturnValue(undefined),
+  getWatches: vi.fn().mockReturnValue([]),
+  getSnapshots: vi.fn().mockReturnValue(new Map()),
+  getLatestSnapshot: vi.fn().mockReturnValue(undefined),
+  getLatestAlerts: vi.fn().mockReturnValue([]),
+  getBenchmarks: vi.fn().mockReturnValue({ stethApr: 3.1, timestamp: Date.now() }),
+  runHealthCheck: vi.fn().mockResolvedValue(undefined),
+  runVaultCheck: vi.fn().mockResolvedValue(undefined),
+  updateWatchRecipient: vi.fn().mockResolvedValue({
+    address: "0x82dc3260f599f4fC4307209A1E3B53dDCA4C585e",
+    name: "TestVault",
+    rules: [],
+    addedAt: 1700000000000,
+    recipient: "user@example.com",
+  }),
+}));
+
+vi.mock("../src/monitor/config.js", () => ({
+  monitorConfig: {
+    telegram: { enabled: false, botToken: "", chatId: "" },
+    email: { enabled: false, host: "", port: 587, secure: false, user: "", pass: "", from: "" },
+    mainnetRpcUrl: "https://mock-mainnet-rpc.test",
+    mainnetAvailable: true,
+    dataDir: ".data",
+    dedupCooldownMs: 6 * 60 * 60 * 1000,
+    maxAlertHistory: 100,
+    anthropic: { enabled: false, apiKey: "", model: "claude-haiku-4-5-20251001" },
+  },
+  MAINNET_STETH: "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+  FETCH_TIMEOUT_MS: 15_000,
+  BIGINT_SCALE_18: 10n ** 18n,
+  normalizeAddress: (addr: string) => addr.toLowerCase(),
+}));
+
+vi.mock("../src/monitor/rules.js", () => {
+  let counter = 0;
+  const mockScope = {
+    apr: 3.5, apr_prev: 3.4, apr_delta: 0.1,
+    apy: 3.5, apy_prev: 3.4, apy_delta: 0.1, tvl: 1000, tvl_prev: 990,
+    tvl_change_pct: 1.0, share_price: 1.0, share_price_prev: 0.999,
+    share_price_change_pct: 0.1, steth_apr: 3.1, spread_vs_steth: 0.4,
+  };
+  return {
+    validateExpression: vi.fn().mockReturnValue(null),
+    evaluateRule: vi.fn().mockReturnValue(false),
+    buildScope: vi.fn().mockReturnValue(mockScope),
+    renderTemplate: vi.fn().mockImplementation((template: string) => template),
+    generateRuleId: vi.fn().mockImplementation(() => `rule-${++counter}`),
+    getAvailableVariables: vi.fn().mockReturnValue([
+      "apy", "apy_prev", "apy_delta", "tvl", "tvl_prev", "tvl_change_pct",
+      "share_price", "share_price_prev", "share_price_change_pct", "steth_apr", "spread_vs_steth",
+    ]),
+    dryRunRule: vi.fn().mockReturnValue({
+      fired: false,
+      scope: mockScope,
+      renderedMessage: "APR dropped to 3.50%",
+    }),
+    VARIABLE_DECIMALS: {
+      apr: 2, apr_prev: 2, apr_delta: 2, apy: 2, apy_prev: 2, apy_delta: 2,
+      tvl: 0, tvl_prev: 0, tvl_change_pct: 2, share_price: 6, share_price_prev: 6,
+      share_price_change_pct: 2, steth_apr: 2, spread_vs_steth: 2,
+    },
+    MAX_EXPRESSION_LENGTH: 500,
+    MAX_MESSAGE_LENGTH: 1000,
+  };
+});
+
+vi.mock("../src/monitor/telegram.js", () => ({
+  TelegramChannel: vi.fn().mockImplementation(() => ({
+    name: "telegram",
+    enabled: false,
+    send: vi.fn().mockResolvedValue(undefined),
+    sendTest: vi.fn().mockResolvedValue({ success: true }),
+  })),
+}));
+
+vi.mock("../src/monitor/email.js", () => ({
+  EmailChannel: vi.fn().mockImplementation(() => ({
+    name: "email",
+    enabled: false,
+    send: vi.fn().mockResolvedValue(undefined),
+    sendTest: vi.fn().mockResolvedValue({ success: true }),
+  })),
+}));
+
+vi.mock("../src/monitor/notifier.js", () => ({
+  sendAlertNotification: vi.fn().mockResolvedValue(undefined),
+  testAllChannels: vi.fn().mockResolvedValue([
+    { name: "telegram", success: true },
+    { name: "email", success: false, error: "Email not configured. Set SMTP_HOST in your environment." },
+  ]),
+  getChannelStatus: vi.fn().mockReturnValue([
+    { name: "telegram", enabled: false },
+    { name: "email", enabled: false },
+  ]),
+}));
+
+vi.mock("../src/monitor/explain.js", () => ({
+  explainAlert: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../src/monitor/db.js", () => ({
+  openDb: vi.fn(),
+  closeDb: vi.fn(),
+  getDb: vi.fn(),
+  insertWatch: vi.fn(),
+  deleteWatch: vi.fn(),
+  updateRecipient: vi.fn(),
+  loadWatch: vi.fn().mockReturnValue(undefined),
+  loadAllWatches: vi.fn().mockReturnValue([]),
+  watchCount: vi.fn().mockReturnValue(0),
+  watchExists: vi.fn().mockReturnValue(false),
+  insertRule: vi.fn(),
+  deleteRule: vi.fn(),
+  upsertSnapshot: vi.fn(),
+  deleteSnapshot: vi.fn(),
+  loadSnapshot: vi.fn().mockReturnValue(undefined),
+  loadAllSnapshots: vi.fn().mockReturnValue(new Map()),
+  appendAlerts: vi.fn(),
+  loadAlertHistory: vi.fn().mockReturnValue([]),
+  loadAlertsByVault: vi.fn().mockReturnValue([]),
+  trimAlertHistory: vi.fn(),
+  loadDedupTimestamps: vi.fn().mockReturnValue({}),
+  saveDedupTimestamps: vi.fn(),
+}));
+
+vi.mock("../src/monitor/mainnet-client.js", () => {
+  const multicallFn = vi.fn().mockImplementation(({ contracts }: { contracts: unknown[] }) => {
+    // Route based on number of contracts in the multicall batch
+    const count = contracts.length;
+    if (count === 5) {
+      // readVaultOnChain batch 1: totalAssets, name, symbol, decimals, asset
+      return Promise.resolve([
+        { status: "success", result: 1000n * 10n ** 18n },
+        { status: "success", result: "TestVault" },
+        { status: "success", result: "TV" },
+        { status: "success", result: 18 },
+        { status: "success", result: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
+      ]);
+    } else if (count === 1) {
+      // readVaultOnChain batch 3: convertToAssets (share price)
+      return Promise.resolve([
+        { status: "success", result: 10n ** 18n },
+      ]);
+    } else if (count === 2) {
+      // readVaultOnChain batch 2: asset decimals + symbol
+      return Promise.resolve([
+        { status: "success", result: 18 },
+        { status: "success", result: "WETH" },
+      ]);
+    }
+    // Fallback for any other multicall
+    return Promise.resolve(contracts.map(() => ({ status: "success", result: 0n })));
+  });
+
+  return {
+    getMainnetClient: vi.fn().mockReturnValue({
+      multicall: multicallFn,
+      getBlockNumber: vi.fn().mockResolvedValue(18000000n),
+      watchContractEvent: vi.fn().mockReturnValue(() => {}),
+    }),
+    _resetMainnetClient: vi.fn(),
+  };
+});
+
 vi.mock("dotenv", () => ({
   config: vi.fn(),
 }));

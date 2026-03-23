@@ -1,190 +1,129 @@
 # Lido MCP Server
 
-The reference MCP server for Lido — making stETH staking, position management, and governance natively callable by any AI agent.
+The reference MCP server for Lido — stETH staking, position management, governance, and earn vault monitoring, all natively callable by any AI agent.
 
 Point Claude, Cursor, or any MCP-compatible agent at this server and stake ETH from a conversation. No custom integration code needed.
 
 ## Why This Exists
 
-AI agents need to interact with DeFi protocols, but bridging the gap between natural language and on-chain transactions is hard. You need to handle private keys, gas estimation, protocol-specific quirks (like stETH rebasing), and transaction safety — all without the agent making a costly mistake.
+AI agents need to interact with DeFi protocols, but bridging natural language to on-chain transactions is hard — private keys, gas estimation, protocol quirks (stETH rebasing), transaction safety. This MCP server gives agents a structured, safe interface to Lido:
 
-This MCP server solves that by giving agents a structured, safe interface to the Lido protocol:
+- **Every write operation supports dry-run simulation** — agents preview gas costs and verify transactions before executing
+- **A mental model document** (`lido.skill.md`) teaches agents Lido concepts before they act — rebasing mechanics, wstETH vs stETH tradeoffs, safe staking patterns
+- **Live vault monitoring with intelligent alerts** — watch Lido Earn vaults for yield changes, TVL shifts, and share price anomalies, with alerts in plain language via Telegram or email
+- **Flexible rule engine** — define alert conditions as readable expressions like `apr < 3.0` or `spread_vs_steth < -0.5`, with automatic stETH benchmark comparison
+- **AI-powered explanations** — optionally uses Claude to translate raw vault events into plain-language messages explaining what changed, why, and whether you need to act
+- **Security guardrails** — `read-only`, `dry-run-only`, and `full` modes, receiver allowlists, per-transaction ETH caps
 
-- **Every write operation supports dry-run simulation** — agents always preview gas costs and verify transactions before executing
-- **A mental model document** (`lido.skill.md`) teaches agents Lido-specific concepts before they act — rebasing mechanics, wstETH vs stETH tradeoffs, safe staking patterns
-- **Position monitoring with bounds** — agents can autonomously manage staking positions within human-set parameters
-- **Guided workflows via MCP prompts** — pre-built multi-step workflows for staking, withdrawing, and governance review
+## MCP Server
 
-## What's Included
+**70+ tools** across staking, governance, vault monitoring, and L2 — every write operation defaults to `dry_run: true`.
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| **Query** | `lido_get_balances` | ETH, stETH, wstETH balances for any address |
-| | `lido_get_staking_apr` | Current APR + N-day SMA |
-| | `lido_get_rewards` | Historical staking rewards with configurable lookback |
-| | `lido_get_protocol_status` | Stake limits, queue mode, withdrawal bounds |
-| | `lido_convert_amounts` | stETH ↔ wstETH rate conversion |
-| | `lido_get_withdrawal_requests` | All withdrawal NFTs and their status |
-| | `lido_get_claimable_eth` | Total ETH available to claim |
-| **Intelligence** | `lido_analyze_position` | Position analysis with bounds checking and recommendations |
-| | `lido_estimate_withdrawal_time` | Predict withdrawal finalization time from queue depth and mode |
-| | `lido_check_steth_rate` | Share rate, pool composition, DEX discount detection |
-| | `lido_check_gas_conditions` | Gas price tiers, operation costs, break-even analysis |
-| | `lido_get_swap_quote` | Price quote for ETH → LDO swap via Uniswap V3 |
-| **Stake** | `lido_stake_eth` | Stake ETH → stETH (with dry_run) |
-| **Wrap** | `lido_wrap_steth_to_wsteth` | Wrap stETH → wstETH (with dry_run) |
-| | `lido_wrap_eth_to_wsteth` | Stake + wrap in one tx (with dry_run) |
-| | `lido_unwrap_wsteth_to_steth` | Unwrap wstETH → stETH (with dry_run) |
-| **Withdraw** | `lido_request_withdrawal` | Request withdrawal with auto-splitting (with dry_run) |
-| | `lido_claim_withdrawal` | Claim finalized withdrawals (with dry_run) |
-| **Swap** | `lido_swap_eth_for_ldo` | Swap ETH for LDO tokens via Uniswap V3 (with dry_run) |
-| **Governance** | | |
-| *Dual Governance* | `lido_get_governance_state` | Dual governance state, config, veto signalling, warning status |
-| | `lido_lock_steth_governance` | Lock stETH in veto signalling escrow (with dry_run) |
-| | `lido_unlock_steth_governance` | Unlock stETH from governance escrow (with dry_run) |
-| | `lido_get_voting_power` | Cross-system governance power: LDO, stETH, escrow balances |
-| | `lido_estimate_veto_impact` | Estimate impact of locking stETH in veto escrow |
-| | `lido_get_veto_thresholds` | Veto threshold config: first/second seal, current level |
-| | `lido_get_governance_timeline` | Unified timeline across all governance systems |
-| | `lido_get_governance_position_impact` | Analyze how governance state affects a staking position |
-| *Aragon DAO* | `lido_get_aragon_vote` | Query Aragon DAO votes — recent list or specific vote details |
-| | `lido_vote_on_proposal` | Cast vote on DAO proposal (with dry_run) |
-| | `lido_analyze_aragon_vote` | Deep analysis: quorum, phase, pass/fail projection, top voters |
-| | `lido_get_aragon_vote_script` | Decode EVM script into human-readable actions |
-| | `lido_get_aragon_vote_timeline` | Vote timeline: phases, time remaining, projections |
-| *Snapshot* | `lido_get_snapshot_proposals` | List governance proposals from Lido Snapshot space |
-| | `lido_get_snapshot_proposal` | Full details of a specific Snapshot proposal |
-| | `lido_vote_on_snapshot` | Cast vote on Snapshot proposal via EIP-712 (with dry_run) |
-| *Easy Track* | `lido_get_easytrack_motions` | List Easy Track motions with optional status filter |
-| | `lido_get_easytrack_motion` | Detailed view of a specific Easy Track motion |
-| | `lido_get_easytrack_config` | Easy Track system config: thresholds, duration, factories |
-| | `lido_get_easytrack_factories` | List registered EVM script factories with descriptions |
-| | `lido_object_easytrack_motion` | Object to an active Easy Track motion (with dry_run) |
-| **stVaults V3** | `lido_list_vaults` | List staking vaults with connection status and value |
-| | `lido_get_vault` | Full vault details: owner, operator, health, locked ETH |
-| | `lido_get_vault_hub_stats` | VaultHub overview: total vault count, addresses |
-| | `lido_vault_fund` | Deposit ETH into a staking vault (with dry_run) |
-| | `lido_vault_withdraw` | Withdraw ETH from a staking vault (with dry_run) |
-| | `lido_vault_pause_beacon_deposits` | Pause beacon chain deposits for a vault (with dry_run) |
-| | `lido_vault_resume_beacon_deposits` | Resume beacon chain deposits for a vault (with dry_run) |
-| | `lido_vault_mint_shares` | Mint stETH shares against vault collateral (with dry_run) |
-| | `lido_vault_burn_shares` | Burn stETH shares to reduce vault liability (with dry_run) |
-| | `lido_vault_rebalance` | Rebalance vault to restore health (with dry_run) |
-| | `lido_vault_create` | Create a new staking vault via VaultFactory (with dry_run) |
-| | `lido_vault_request_validator_exit` | Request validator exit from a vault (with dry_run) |
-| **Protocol Info** | `lido_get_protocol_info` | TVL, fee structure, total shares, buffered ETH, APR |
-| | `lido_get_staking_modules` | List all staking router modules with IDs and status |
-| | `lido_get_node_operators` | List curated module node operators with validator counts |
-| | `lido_get_contract_addresses` | All Lido contract addresses for the current chain |
-| **Token Management** | `lido_get_token_info` | stETH/wstETH/LDO metadata: name, symbol, supply |
-| | `lido_get_allowance` | Check token allowance for a spender address |
-| | `lido_approve_token` | Approve stETH/wstETH/LDO for a spender (with dry_run) |
-| | `lido_transfer_token` | Transfer stETH/wstETH/LDO to an address (with dry_run) |
-| | `lido_revoke_approval` | Revoke a previous token approval (with dry_run) |
-| **Withdrawal NFTs** | `lido_get_withdrawal_nft_owner` | Check owner of a withdrawal request NFT |
-| | `lido_transfer_withdrawal_nft` | Transfer a withdrawal NFT (with dry_run) |
-| | `lido_approve_withdrawal_nft` | Approve address to transfer a withdrawal NFT (with dry_run) |
-| **L2 wstETH** | `lido_l2_get_wsteth_balance` | wstETH + ETH balances on Base, Optimism, or Arbitrum |
-| | `lido_l2_transfer_wsteth` | Transfer wstETH on L2 (with dry_run) |
-| | `lido_l2_get_wsteth_info` | L2 wstETH contract info + total bridged supply |
-| | `lido_get_all_l2_balances` | Cross-chain wstETH balances across 11 L2s |
-| **L2 stETH** | `lido_l2_get_steth_balance` | Rebasing stETH + ETH balances on Optimism |
-| *(Optimism only)* | `lido_l2_transfer_steth` | Transfer rebasing stETH on Optimism (with dry_run) |
+| Category | Tools |
+|----------|-------|
+| **Query** | `lido_get_balances`, `lido_get_staking_apr`, `lido_get_rewards`, `lido_get_protocol_status`, `lido_convert_amounts`, `lido_get_withdrawal_requests`, `lido_get_claimable_eth`, `lido_get_chain_info` |
+| **Intelligence** | `lido_analyze_position`, `lido_estimate_withdrawal_time`, `lido_check_steth_rate`, `lido_check_gas_conditions`, `lido_get_swap_quote` |
+| **Stake / Wrap / Withdraw** | `lido_stake_eth`, `lido_wrap_steth_to_wsteth`, `lido_wrap_eth_to_wsteth`, `lido_unwrap_wsteth_to_steth`, `lido_request_withdrawal`, `lido_claim_withdrawal`, `lido_swap_eth_for_ldo` |
+| **Governance** | Dual governance state + lock/unlock stETH in veto escrow, Aragon DAO vote/analyze/decode, Snapshot proposals + voting, Easy Track motions + objections, voting power + veto thresholds + timeline |
+| **Earn Vault Monitor** | `lido_list_earn_vaults`, `lido_watch_vault`, `lido_unwatch_vault`, `lido_add_rule`, `lido_remove_rule`, `lido_check_vault`, `lido_list_watches`, `lido_get_vault_alerts`, `lido_test_notifications` |
+| **stVaults V3** | List, inspect, fund, withdraw, pause/resume beacon deposits, mint/burn shares, rebalance, create vault, request validator exit |
+| **Protocol Info** | TVL, fee structure, staking modules, node operators, contract addresses |
+| **Token Management** | Token info, allowances, approve, transfer, revoke for stETH/wstETH/LDO |
+| **Withdrawal NFTs** | Owner lookup, transfer, approve |
+| **L2 wstETH** | Balance, transfer, info on Base/Optimism/Arbitrum + cross-chain balances across 11 L2s |
+| **L2 stETH** | Rebasing stETH balance + transfer on Optimism |
 
-### 6 Prompts (Guided Workflows)
+**6 guided prompts** — multi-step workflows for staking (`stake-eth-safely`), position analysis (`manage-position`), withdrawals (`withdraw-steth`), governance review (`review-governance`), vault management (`manage-vault`), and governance participation (`participate-governance`).
 
-| Prompt | What It Does |
-|--------|-------------|
-| `stake-eth-safely` | Walks through protocol check → balance check → APR review → dry run → execution |
-| `manage-position` | Comprehensive position analysis with monitoring bounds setup |
-| `withdraw-steth` | Full withdrawal lifecycle: request → monitor → claim |
-| `review-governance` | Governance state analysis with plain-language interpretation |
-| `manage-vault` | stVaults V3 management: list → inspect → fund/withdraw → verify |
-| `participate-governance` | Cross-system governance participation: check power, review proposals, vote |
+**4 live resources** — `lido://position/{address}`, `lido://protocol/status`, `lido://governance/state`, `lido://governance/votes`.
 
-### 4 Resources (Live Data)
+**Agent mental model** (`lido.skill.md`) — see "Why This Exists" above.
 
-| Resource URI | Description |
-|-------------|-------------|
-| `lido://position/{address}` | JSON snapshot of a staking position |
-| `lido://protocol/status` | Protocol status: limits, queue mode, APR |
-| `lido://governance/state` | Governance state, veto signalling, escrow |
-| `lido://governance/votes` | Active governance items: Snapshot proposals, Easy Track motions |
+### Key Design Decisions
 
-### Agent Mental Model (`lido.skill.md`)
+- **Real SDK, no mocks** — all operations go through `@lidofinance/lido-ethereum-sdk` and `viem` to actual Ethereum contracts
+- **Dry-run by default** — every state-changing tool defaults to `dry_run: true`. Agents must explicitly set `dry_run: false` to execute
+- **Protocol-aware errors** — raw blockchain errors (insufficient funds, reverts, nonce conflicts, stake limits, paused) are translated to human-readable messages
+- **MCP annotations** — every tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` so agents know which tools are safe to call without confirmation
+- **L2 aware** — set `LIDO_CHAIN_ID` to Base, Optimism, or Arbitrum and the server exposes only wstETH-specific tools; L1-only tools are excluded automatically
 
-A structured document that teaches AI agents Lido-specific knowledge:
-- stETH rebasing mechanics and the shares model
-- wstETH vs stETH tradeoffs and when to use each
-- Safe staking patterns (always dry-run first)
-- Withdrawal lifecycle (request → wait → claim)
-- Dual governance states and what they mean for stakers
-- Common mistakes to avoid (dust amounts, exact comparisons, forgetting claims)
+## Earn Vault Monitor
 
-## Setup
+Watches Lido Earn vaults (EarnETH, EarnUSD) and tells depositors when something worth knowing has changed — in plain language, not raw data.
 
-### Prerequisites
-- Node.js 18+
-- An Ethereum RPC URL (Alchemy, Infura, etc.)
-- A private key for the wallet that will execute transactions
+### How It Works
 
-### Install
+1. **Watch a vault** — call `lido_watch_vault` with a vault address (use `lido_list_earn_vaults` to discover them)
+2. **Define alert rules** — write conditions as readable expressions evaluated against live vault data
+3. **Receive alerts** — get notified via Telegram or email when rules fire, with AI-generated explanations
 
-```bash
-git clone <repo-url>
-cd lido-mcp-server
-npm install
+The monitor runs continuously:
+- Subscribes to on-chain **`Deposit`/`Withdraw`** events on each vault and **`TokenRebased`** on stETH for near-real-time reaction
+- Runs a **5-minute polling** health check as a fallback
+- Compares vault APR against the **stETH SMA APR** from the Lido API on every check
+- Persists all state (watches, snapshots, alerts, dedup) in **SQLite** — survives restarts
+- **6-hour dedup** window per rule per vault prevents alert fatigue
+
+### Alert Delivery
+
+- **Telegram** — formatted alerts with severity indicators, vault context, benchmark comparison, and actionable guidance
+- **Email** — HTML-formatted alerts with the same context
+- **AI explanations** (optional) — when `ANTHROPIC_API_KEY` is set, each alert is passed to Claude which generates a plain-language explanation covering:
+  1. What changed — the specific metric that triggered the alert
+  2. Why it likely happened — plausible explanations based on the data
+  3. What to consider — whether the depositor should act, wait, or investigate
+
+### Rule Engine
+
+Rules aren't a fixed set of predefined alerts — they're **open-ended expressions** you define in natural language through the agent. Tell Claude "alert me if yield drops below 3%" and it writes the rule `apr < 3.0`. Say "notify me if the vault starts underperforming stETH by more than half a percent while TVL is also dropping" and it composes `spread_vs_steth < -0.5 and tvl_change_pct < 0`. The agent translates your intent into a mathjs expression evaluated against live vault metrics:
+
+| Variable | What it is |
+|----------|------------|
+| `apr` / `apy` | Current vault APR (%) |
+| `apr_prev` / `apy_prev` | APR from previous snapshot |
+| `apr_delta` / `apy_delta` | APR change between snapshots (percentage points) |
+| `tvl` | Total value locked |
+| `tvl_prev` | TVL from previous snapshot |
+| `tvl_change_pct` | TVL change as a percentage |
+| `share_price` | Current share price (asset/share) |
+| `share_price_prev` | Share price from previous snapshot |
+| `share_price_change_pct` | Share price change as a percentage |
+| `steth_apr` | stETH SMA APR benchmark (from Lido API) |
+| `spread_vs_steth` | Vault APR minus stETH APR (positive = outperforming) |
+
+**Example rules:**
+
+| Expression | Fires when |
+|------------|-----------|
+| `apr < 3.0` | Yield drops below 3% — a simple yield floor |
+| `spread_vs_steth < 0` | Vault underperforms raw stETH staking |
+| `spread_vs_steth < -0.5` | Vault underperforms stETH by more than 0.5pp |
+| `tvl_change_pct < -10` | TVL drops >10% between checks — capital flight |
+| `share_price_change_pct < -0.1` | Share price drop — possible exploit or depeg |
+| `apr < 3.0 and tvl_change_pct < -5` | Yield dropped AND capital leaving |
+| `abs(apr_delta) > 2.0` | Large APR swing in either direction |
+| `apr < steth_apr - 1.0` | Falls more than 1pp behind stETH benchmark |
+| `apr > apr_prev * 1.5` | APR spiked to 1.5x its previous value |
+
+Supports `and`/`or`/`not` boolean logic, comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`), arithmetic (`+`, `-`, `*`, `/`), and safe math functions (`abs`, `min`, `max`, `round`, `floor`, `ceil`, `sqrt`).
+
+Each rule includes a **message template** with `{{variable}}` interpolation:
+
+```
+APR dropped to {{apr}}%, below your 3% floor. stETH is at {{steth_apr}}%.
 ```
 
-### Configure
+If no message is provided, one is auto-generated from the expression pattern.
 
-```bash
-cp .env.example .env
-```
+The rule engine is **sandboxed** — expressions are parsed into an AST and validated against an allowlist of variables, functions, and node types. No arbitrary code execution.
 
-Edit `.env`:
-```
-LIDO_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
-LIDO_PRIVATE_KEY=0xYOUR_PRIVATE_KEY
-LIDO_CHAIN_ID=1
-```
+### MCP-Callable Vault Health
 
-**L1 (full Lido SDK — staking, wrapping, governance):**
-- `LIDO_CHAIN_ID=1` for Ethereum mainnet
-- `LIDO_CHAIN_ID=17000` for Holesky testnet
-- `LIDO_CHAIN_ID=560048` for Hoodi testnet (recommended for testing)
+Other agents can query vault health programmatically — the monitor isn't just a notification service, it's a building block:
 
-**L2 (wstETH balance queries + transfers):**
-- `LIDO_CHAIN_ID=8453` for Base
-- `LIDO_CHAIN_ID=10` for Optimism (also supports rebasing stETH)
-- `LIDO_CHAIN_ID=42161` for Arbitrum
-
-### Build & Run
-
-```bash
-npm run build
-npm start
-```
-
-### Connect to Claude / Cursor
-
-Add to your MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "lido": {
-      "command": "bash",
-      "args": ["/path/to/lido-mcp-server/start.sh"],
-      "env": {
-        "LIDO_RPC_URL": "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY",
-        "LIDO_PRIVATE_KEY": "0xYOUR_PRIVATE_KEY",
-        "LIDO_CHAIN_ID": "1"
-      }
-    }
-  }
-}
-```
+- **`lido_check_vault`** — on-demand health check for any ERC-4626 vault (no watch required). Returns APR, TVL, share price, and stETH benchmark spread
+- **`lido_list_earn_vaults`** — discover available Mellow earn vaults from the live API
+- **`lido_get_vault_alerts`** — query alert history programmatically
 
 ## Target Use Cases
 
@@ -206,33 +145,95 @@ Claude: → Executes stake
   → "Done. TX: 0xabc... You received 1.0 stETH."
 ```
 
-### 2. Agent monitors and manages position within bounds
+### 2. Depositor gets a Telegram message explaining why EarnETH yield dropped overnight
 
 ```
-User: "Monitor my Lido position. Alert me if APR drops below 3%
-       or my staked amount exceeds 100 ETH."
+User: "Watch the EarnETH vault. Alert me if yield drops below 4%
+       or it falls behind raw stETH staking."
 
-Claude: → Calls lido_analyze_position with min_apr=3.0, max_position_eth=100
-  → "Position: 85.2 ETH staked, APR 3.4%. All within bounds."
+Claude: → Discovers vault via lido_list_earn_vaults
+  → Calls lido_watch_vault with rules:
+    - apr < 4.0 [warning]
+    - spread_vs_steth < 0 [critical]
+  → "Watching EarnETH (0x...). APR: 5.2%, TVL: 12,450 ETH.
+     You'll get a Telegram alert if APR drops below 4%
+     or the vault underperforms stETH."
 
-[Later, APR drops]
+[Overnight, APR drops to 3.6%]
 
-Claude: → Calls lido_analyze_position again
-  → "⚠ APR is 2.8% — below your minimum of 3.0%.
-     7-day SMA is 3.1%, suggesting this may be temporary.
-     Recommend: wait 24h and re-check before withdrawing."
+Telegram: 🚨 EarnETH — Warning
+
+  APR dropped to *3.60%*, down from 5.20%.
+
+  The vault's yield fell 1.6pp since the last check. This likely
+  reflects a rotation in the underlying strategy or temporary
+  market conditions. The vault is still outperforming direct stETH
+  staking (3.40%) by 0.20pp, so no immediate action is needed —
+  but worth monitoring if the trend continues.
+
+  • Current APR: 3.60%
+  • Previous APR: 5.20%
+  • stETH benchmark: 3.40%
+  • Spread vs stETH: 0.20pp above
+
+  View on Etherscan
 ```
 
-### 3. DAO contributor queries and votes on governance proposals
+### 3. Agent queries vault health before deciding to deposit
+
+```
+Agent: → Calls lido_check_vault(address="0x...")
+
+Response:
+  === Vault Health: EarnETH ===
+  TVL: 12,450.00 ETH
+  Share Price: 1.034521 ETH/share
+  APR: 5.20%
+
+  --- Benchmark ---
+  stETH APR (SMA): 3.40%
+  Spread: 1.80pp above stETH benchmark
+
+  Last checked: 2025-03-23T14:30:00.000Z
+
+Agent: → Spread is positive and significant, decides to deposit
+```
+
+### 4. Natural-language rule configuration
+
+```
+User: "I want to know if the vault starts doing worse than just
+       holding stETH, especially if people are also pulling money out.
+       And give me a heads up if the share price ever drops suddenly —
+       that could mean something bad happened."
+
+Claude: I'll set up three rules for you.
+  → Calls lido_add_rule: "spread_vs_steth < 0 and tvl_change_pct < -5" [warning]
+    Message: "Vault underperforming stETH (spread {{spread_vs_steth}}pp)
+              while TVL dropped {{tvl_change_pct}}%"
+  → Calls lido_add_rule: "share_price_change_pct < -0.1" [critical]
+    Message: "Share price dropped {{share_price_change_pct}}% — investigate immediately"
+  → Calls lido_add_rule: "spread_vs_steth < -1.0" [critical]
+    Message: "Vault is {{spread_vs_steth}}pp behind stETH — significant underperformance"
+
+  "Done. Three rules active:
+   1. Warning if the vault trails stETH while TVL is declining
+   2. Critical alert on any sudden share price drop (>0.1%)
+   3. Critical if the vault falls more than 1pp behind stETH
+
+   Dry-ran all three against current data — none would fire right now
+   (APR 5.2% vs stETH 3.4%, TVL stable). You'll get alerts the
+   moment any condition is met."
+```
+
+### 5. DAO contributor queries and votes on governance proposals
 
 ```
 User: "Show me the latest Lido DAO votes"
 
 Claude: → Calls lido_get_aragon_vote
-  → "5 most recent votes:
-     Vote #185: Open — Yea 15.2M LDO (92%), Nay 1.3M LDO (8%)
-     Vote #184: Executed — passed with 98% support
-     ..."
+  → "Vote #185: Open — Yea 15.2M LDO (92%), Nay 1.3M LDO (8%)
+     Vote #184: Executed — passed with 98% support ..."
 
 User: "Vote yes on #185"
 
@@ -241,11 +242,11 @@ Claude: → Calls lido_vote_on_proposal (dry_run=true)
 
 User: "Yes"
 
-Claude: → Calls lido_vote_on_proposal (dry_run=false)
+Claude: → Executes vote
   → "Done. Voted Yea on #185. TX: 0xabc..."
 ```
 
-### 4. Staker signals opposition via Dual Governance
+### 6. Staker signals opposition via Dual Governance
 
 ```
 User: "I want to signal opposition to the latest proposal."
@@ -262,73 +263,34 @@ Claude: → Approves stETH for escrow + locks
   → "Done. 10 stETH locked in veto signalling escrow. TX: 0xdef..."
 ```
 
-### 5. L2 wstETH management on Base
+## Setup
 
-```
-User: "Check my wstETH balance on Base"
-
-Claude: → Calls lido_l2_get_wsteth_balance
-  → "Balances on Base:
-     ETH: 0.5
-     wstETH: 10.0
-     Note: wstETH on L2 is a bridged token whose value tracks the L1 rate."
+```bash
+git clone <repo-url>
+cd lido-mcp-server
+cp .env.example .env  # edit with your RPC URL, private key, chain ID
+npm install && npm run build && npm start
 ```
 
-## Architecture
+See `.env.example` for all configuration options (chain ID, security mode, Telegram, SMTP, Anthropic).
 
-```
-src/
-├── index.ts              MCP server entry — registers tools, prompts, resources
-├── config.ts             Environment validation (RPC, private key, chain)
-├── sdk-factory.ts        Viem clients + Lido SDK initialization
-├── types.ts              Shared TypeScript types
-├── prompts.ts            MCP prompt definitions (guided workflows)
-├── resources.ts          MCP resource definitions (live data endpoints)
-├── tools/
-│   ├── index.ts          Tool router (registration + dispatch)
-│   ├── apr.ts            Staking APR queries
-│   ├── balances.ts       ETH/stETH/wstETH balance queries
-│   ├── convert.ts        Token amount conversion
-│   ├── gas.ts            Gas price analysis + break-even calculator
-│   ├── governance.ts     Dual governance state + config + warnings
-│   ├── aragon-voting.ts  Query, vote, analyze Aragon DAO proposals
-│   ├── governance-actions.ts Lock/unlock stETH in veto signalling escrow
-│   ├── governance-analysis.ts Veto impact, thresholds, timeline, position impact
-│   ├── snapshot.ts        Snapshot proposal queries + voting
-│   ├── easytrack.ts       Easy Track motions, config, factories, objections
-│   ├── swap.ts            ETH → LDO swap quotes + execution via Uniswap V3
-│   ├── position.ts       Position analysis with bounds checking
-│   ├── protocol-status.ts Stake limits, queue status
-│   ├── steth-rate.ts     Share rate + pool composition monitor
-│   ├── rewards.ts        Historical staking rewards
-│   ├── stake.ts          Stake ETH → stETH
-│   ├── withdraw.ts       Request & claim withdrawals
-│   ├── withdrawal-status.ts Check withdrawal request status + NFT operations
-│   ├── withdrawal-time.ts  Withdrawal finalization time estimator
-│   ├── wrap.ts           Wrap/unwrap stETH ↔ wstETH
-│   ├── stvaults.ts       stVaults V3: list, inspect, fund, withdraw, pause/resume, create, exit
-│   ├── protocol-info.ts  Protocol TVL, staking modules, node operators, addresses
-│   ├── tokens.ts         Token management: info, allowances, approve, transfer, revoke
-│   ├── l2-wsteth.ts      L2 wstETH balance, transfer, info + cross-chain queries
-│   └── l2-steth.ts       L2 rebasing stETH balance + transfer (Optimism only)
-└── utils/
-    ├── dry-run.ts        Transaction simulation engine
-    ├── errors.ts         Protocol-aware error translation
-    ├── format.ts         Formatting utilities + Zod schemas
-    ├── governance-labels.ts Shared governance state labels
-    ├── security.ts       Receiver allowlist + amount cap validation
-    ├── vaulthub-abi.ts   VaultHub + StakingVault ABIs and addresses
-    └── easytrack-abi.ts  Easy Track contract ABIs and addresses
-```
+### Connect to Claude / Cursor
 
-**Key design decisions:**
-- **Real SDK, no mocks** — all operations go through `@lidofinance/lido-ethereum-sdk` and `viem` to actual Ethereum contracts
-- **Dry-run by default** — every state-changing tool defaults to `dry_run: true` (simulation only). Agents must explicitly set `dry_run: false` to execute real transactions
-- **Protocol-aware errors** — raw blockchain errors (insufficient funds, reverts, nonce conflicts, stake limits, paused) are translated to human-readable messages
-- **Zod validation** — all tool inputs are validated before any SDK call
-- **MCP annotations** — every tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` so agents know which tools are safe to call without confirmation
-- **Parallel queries** — tools that need multiple data points use `Promise.all` for performance
-- **L2 aware** — set `LIDO_CHAIN_ID` to Base (8453), Optimism (10), or Arbitrum (42161) and the server exposes wstETH-specific tools. On Optimism, rebasing stETH tools are also available. L1-only tools (staking, governance) are excluded automatically
+```json
+{
+  "mcpServers": {
+    "lido": {
+      "command": "bash",
+      "args": ["/path/to/lido-mcp-server/start.sh"],
+      "env": {
+        "LIDO_RPC_URL": "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY",
+        "LIDO_PRIVATE_KEY": "0xYOUR_PRIVATE_KEY",
+        "LIDO_CHAIN_ID": "1"
+      }
+    }
+  }
+}
+```
 
 ## License
 

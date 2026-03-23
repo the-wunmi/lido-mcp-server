@@ -170,6 +170,27 @@ import {
 
 import { chainInfoToolDef, handleGetChainInfo } from "./chain-info.js";
 
+import {
+  listEarnVaultsToolDef,
+  watchVaultToolDef,
+  unwatchVaultToolDef,
+  addRuleToolDef,
+  removeRuleToolDef,
+  testNotificationsToolDef,
+  listWatchesToolDef,
+  checkVaultToolDef,
+  getVaultAlertsToolDef,
+  handleListEarnVaults,
+  handleWatchVault,
+  handleUnwatchVault,
+  handleAddRule,
+  handleRemoveRule,
+  handleTestNotifications,
+  handleListWatches,
+  handleCheckVault,
+  handleGetVaultAlerts,
+} from "./vault-monitor.js";
+
 const l1ReadToolDefs = [
   chainInfoToolDef,
   balancesToolDef,
@@ -211,6 +232,10 @@ const l1ReadToolDefs = [
   allowanceToolDef,
   withdrawalNftOwnerToolDef,
   l2AllBalancesToolDef,
+  listEarnVaultsToolDef,
+  listWatchesToolDef,
+  checkVaultToolDef,
+  getVaultAlertsToolDef,
 ];
 
 const l1WriteToolDefs = [
@@ -240,6 +265,11 @@ const l1WriteToolDefs = [
   revokeApprovalToolDef,
   transferWithdrawalNftToolDef,
   approveWithdrawalNftToolDef,
+  watchVaultToolDef,
+  unwatchVaultToolDef,
+  addRuleToolDef,
+  removeRuleToolDef,
+  testNotificationsToolDef,
 ];
 
 const l1ReadHandlers: Record<string, ToolHandler> = {
@@ -283,6 +313,10 @@ const l1ReadHandlers: Record<string, ToolHandler> = {
   lido_get_allowance: handleGetAllowance,
   lido_get_withdrawal_nft_owner: handleGetWithdrawalNftOwner,
   lido_get_all_l2_balances: handleL2GetAllBalances,
+  lido_list_earn_vaults: handleListEarnVaults,
+  lido_list_watches: handleListWatches,
+  lido_check_vault: handleCheckVault,
+  lido_get_vault_alerts: handleGetVaultAlerts,
 };
 
 const l1WriteHandlers: Record<string, ToolHandler> = {
@@ -312,6 +346,11 @@ const l1WriteHandlers: Record<string, ToolHandler> = {
   lido_revoke_approval: handleRevokeApproval,
   lido_transfer_withdrawal_nft: handleTransferWithdrawalNft,
   lido_approve_withdrawal_nft: handleApproveWithdrawalNft,
+  lido_watch_vault: handleWatchVault,
+  lido_unwatch_vault: handleUnwatchVault,
+  lido_add_rule: handleAddRule,
+  lido_remove_rule: handleRemoveRule,
+  lido_test_notifications: handleTestNotifications,
 };
 
 const l2ReadToolDefs = [
